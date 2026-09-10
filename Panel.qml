@@ -271,7 +271,7 @@ Panel {
                     }
                     RowLayout {
                         width: parent.width; spacing: Style.space(6)
-                        Rectangle { width: Style.space(6); height: width; radius: width/2; color: root.stale ? Color.urgent : root.memoryColor }
+                        Rectangle { implicitWidth: Style.space(6); implicitHeight: implicitWidth; radius: width/2; color: root.stale ? Color.urgent : root.memoryColor }
                         Label { Layout.fillWidth: true; text: root.stale ? "Readings unavailable · retrying" : "Live  ·  every " + root.setting("interval", 2) + "s"; font.pixelSize: Style.space(12); opacity: 0.7 }
                         Text { text: Math.floor((root.snapshot.uptime || 0) / 3600) + "h uptime"; color: root.ink; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.space(12) }
                     }
@@ -458,7 +458,7 @@ Panel {
                                     anchors.margins: Style.space(10); spacing: Style.space(7)
                                     RowLayout {
                                         width: parent.width; spacing: Style.space(7)
-                                        Rectangle { width: Style.space(5); height: width; radius: width / 2; color: interfaceCard.linked ? root.memoryColor : root.fade(root.ink, 0.4) }
+                                        Rectangle { implicitWidth: Style.space(5); implicitHeight: implicitWidth; radius: width / 2; color: interfaceCard.linked ? root.memoryColor : root.fade(root.ink, 0.4) }
                                         Text { Layout.fillWidth: true; text: interfaceCard.net.name || ""; elide: Text.ElideRight; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true }
                                         Text { text: (interfaceCard.net.kind || "Interface") + " · " + (interfaceCard.net.state || "unknown"); color: root.ink; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.space(10) }
                                     }
