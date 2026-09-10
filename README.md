@@ -149,7 +149,23 @@ Optional `lspci` improves device names. NVIDIA queries have a timeout. Nothing i
 - **Disks:** one mount per local block device. The bar uses the first mount, normally `/`.
 - **Processes:** ranked by current CPU usage, then resident memory. Each comparison-bar column is scaled to its highest visible reading.
 
-Refresh defaults to **2 seconds**, configurable from **1–30 seconds** in Omarchy’s widget settings. Collection continues while the popup is closed. Each bar instance currently runs its own collector; multi-monitor collection is not yet shared.
+### Change the refresh interval
+
+Readings refresh every **2 seconds** by default. To refresh every **5 seconds**, run this in a terminal:
+
+```sh
+omarchy bar set onelegdave.system-quikview interval 5 --json
+```
+
+Replace `5` with any whole number from **1–30**. The number is the time between updates in seconds. The setting saves automatically and applies without restarting.
+
+To restore the **2-second default**:
+
+```sh
+omarchy bar set onelegdave.system-quikview interval 2 --json
+```
+
+Collection continues while the popup is closed. Each bar instance currently runs its own collector; multi-monitor collection is not yet shared.
 
 ## Troubleshooting
 
