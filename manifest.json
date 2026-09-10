@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "onelegdave.system-quikview",
+  "name": "System QuikView",
+  "version": "0.4.0",
+  "author": "OneLegDave",
+  "license": "MIT",
+  "description": "Your system at a glance: live history, collapsible cards, and configurable GPU sources.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "System QuikView",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "metric": "CPU",
+      "interval": 2,
+      "gpuSource": "auto",
+      "sectionOrder": []
+    },
+    "schema": [
+      {
+        "key": "metric",
+        "type": "enum",
+        "label": "Top bar metric",
+        "options": [
+          "CPU",
+          "Memory",
+          "GPU",
+          "Integrated GPU",
+          "Dedicated GPU",
+          "CPU temperature",
+          "GPU temperature",
+          "VRAM",
+          "Network",
+          "Disk",
+          "Icon only"
+        ],
+        "defaultValue": "CPU"
+      },
+      {
+        "key": "gpuSource",
+        "type": "string",
+        "label": "GPU source",
+        "defaultValue": "auto",
+        "description": "auto, dedicated, integrated, hottest, or a device PCI address. Use the popup to choose a detected device by name."
+      },
+      {
+        "key": "interval",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 1,
+        "max": 30,
+        "defaultValue": 2
+      }
+    ],
+    "aliases": [
+      "quikview",
+      "system",
+      "monitor"
+    ]
+  },
+  "homepage": "https://github.com/onelegdave/system-quikview"
+}

@@ -1,0 +1,37 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Python tests
+        run: python3 -m unittest -v
+      - name: Model tests
+        run: node test_model.cjs
+      - name: Validate manifest and installer file list
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from install import FILES, PLUGIN_ID
+          manifest = json.loads(Path('manifest.json').read_text())
+          assert manifest['id'] == PLUGIN_ID
+          for filename in FILES:
+              assert Path(filename).is_file(), filename
+          for filename in manifest['entryPoints'].values():
+              assert Path(filename).is_file(), filename
+          PY
