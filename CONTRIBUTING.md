@@ -45,3 +45,16 @@ omarchy-shell onelegdave.system-quikview scrollBy 200
 ```
 
 Keep the collector read-only, avoid new required dependencies when the kernel already provides the information, and report unavailable values explicitly.
+
+## Publishing an update
+
+Keep the version consistent across the plugin, GitHub, and the marketplace:
+
+1. Update `manifest.json` for a new plugin version and document the changes.
+2. Run the Python tests, model tests, QML lint, and Omarchy manifest validation above. Check affected behavior at runtime.
+3. Commit and push using the maintainer's Git identity.
+4. Create a matching `vX.Y.Z` Git tag and publish a GitHub Release with that version and clear release notes. Do not move an existing release tag.
+5. Update the marketplace submission or its current update process with the same version and a link to the GitHub Release. The marketplace reads the displayed plugin version from `manifest.json`; GitHub's Releases area requires a published release.
+6. Verify the release, pushed commit, automated checks, and marketplace status before announcing completion.
+
+For System QuikView, the repository is https://github.com/onelegdave/system-quikview and the initial marketplace submission is https://github.com/omacom/omarchy-plugin-marketplace/issues/6136.
