@@ -9,6 +9,7 @@ For a useful report, include your Omarchy and Quickshell versions, the affected 
 ```sh
 python3 -m unittest -v
 node test_model.cjs
+./lint-qml.sh
 omarchy-plugin-validate .
 python3 install.py
 ```
@@ -16,6 +17,8 @@ python3 install.py
 Use a local user-plugin installation for development; never edit `/usr/share/omarchy/`. The installer backs up previous local files and configuration. User plugin code should reload automatically; `omarchy restart shell` clears stale components when necessary.
 
 Before sending a change, exercise its actual behavior in the popup. Check both dark and light themes for visual changes. Preserve saved selections and layout order, including when a device disappears or a new one is detected.
+
+The QML lint script uses the installed Omarchy and Quickshell types. It maps the virtual `qs` import prefix in a temporary directory and leaves warning checks enabled. Run it on an Omarchy machine; the Ubuntu CI job covers the Python and JavaScript tests.
 
 ## Useful diagnostics
 

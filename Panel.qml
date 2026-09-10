@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as Controls
@@ -32,20 +33,26 @@ Panel {
         function customize(): void { root.customizing = true; root.open() }
         function move(key: string, direction: string): void { root.moveSection(key, Number(direction)) }
         function status(): string {
-            return JSON.stringify({customizing: root.customizing, order: root.sectionLayout.map(e => e.key), renderedOrder: dashboard.children.filter(item => "entry" in item).sort((a, b) => a.y - b.y).map(item => item.entry.key), colors: {cpu: root.cpuColor.toString(), memory: root.memoryColor.toString(), gpu: root.gpuColor.toString(), temperature: root.temperatureColor.toString()}, metric: root.metric, collapsed: root.collapsed, stale: root.stale, cpu: root.snapshot.cpu, gpus: root.gpuList, gpuSource: root.gpuSource, temperatureGpu: root.temperatureGpu, barText: root.barValue(), geometry: {barWidth: button.width, popupX: panel.cardOrigin.x, popupY: panel.cardOrigin.y, popupWidth: panel.contentWidth, popupHeight: panel.contentHeight}, viewport: {height: scroll.height, contentHeight: body.implicitHeight, y: scroll.contentItem.contentY}})
+            return JSON.stringify({customizing: root.customizing, order: root.sectionLayout.map(e => e.key), renderedOrder: dashboard.children.filter(item => "entry" in item).sort((a, b) => a.y - b.y).map(item => item.entry.key), colors: {cpu: root.cpuColor.toString(), memory: root.memoryColor.toString(), gpu: root.gpuColor.toString(), temperature: root.temperatureColor.toString()}, metric: root.metric, collapsed: root.collapsed, stale: root.stale, cpu: root.snapshot.cpu, gpus: root.gpuList, gpuSource: root.gpuSource, temperatureGpu: root.temperatureGpu, barText: root.barValue(), geometry: {barWidth: button.width, popupX: panel.cardOrigin.x, popupY: panel.cardOrigin.y, popupWidth: panel.contentWidth, popupHeight: panel.contentHeight}, viewport: {height: scroll.height, contentHeight: body.implicitHeight, y: root.flickable ? root.flickable.contentY : 0}})
         }
     }
     property var snapshot: ({})
     property double received: 0
     property bool stale: true
-    readonly property color ink: Color.popups.text
+    // Omarchy exposes these runtime objects as generic QtObject properties.
+    readonly property var themeFont: Style.font
+    readonly property var popupColors: Color.popups
+    readonly property var shellHost: bar
+    readonly property var barWindow: button.QsWindow.window
+    readonly property Flickable flickable: scroll.contentItem as Flickable
+    readonly property color ink: popupColors.text
     readonly property color cpuColor: Color.accent
     ThemePalette { id: themePalette }
     readonly property color memoryColor: themePalette.memory
     readonly property color gpuColor: themePalette.gpu
     readonly property color temperatureColor: themePalette.temperature
     property bool customizing: false
-    onCustomizingChanged: Qt.callLater(function() { if (scroll.contentItem) scroll.contentItem.contentY = 0 })
+    onCustomizingChanged: Qt.callLater(function() { if (root.flickable) root.flickable.contentY = 0 })
     readonly property var availableSections: [
         {key: "overview", label: "Overview cards"}, {key: "cpu", label: "Processor"}, {key: "memory", label: "Memory"}
     ].concat(gpuList.map(g => ({key: "gpu-" + g.id, label: (g.kind === "dedicated" ? "Dedicated GPU" : g.kind === "integrated" ? "Integrated GPU" : "GPU") + " · " + g.name}))).concat([
@@ -96,7 +103,7 @@ Panel {
 
     function scrollBy(delta) {
         if (!isFinite(delta)) return
-        let flick = scroll.contentItem
+        let flick = root.flickable
         if (flick && flick.contentY !== undefined) flick.contentY = Math.max(0, Math.min(body.implicitHeight - scroll.height, flick.contentY + delta))
     }
     function fade(color, opacity) { return Qt.rgba(color.r, color.g, color.b, opacity) }
@@ -111,7 +118,7 @@ Panel {
     function save(key, value) {
         let next = Object.assign({}, settings)
         next[key] = value
-        if (bar && bar.shell) bar.shell.updateEntryInline(moduleName, next)
+        if (root.shellHost && root.shellHost.shell) root.shellHost.shell.updateEntryInline(moduleName, next)
     }
     function fold(key) {
         let next = collapsed.slice(), i = next.indexOf(key)
@@ -185,7 +192,7 @@ Panel {
         id: button
         bar: root.bar
         text: root.barValue()
-        fontSize: Style.font.body
+        fontSize: root.themeFont.body
         tooltipText: "System QuikView · " + root.metric + (root.metric === "GPU temperature" ? " · " + (root.temperatureGpu.name || "Unavailable") : "") + "\nClick for details · right-click to customize"
         onPressed: b => { if (b === Qt.RightButton) { root.customizing = true; root.open() } else { if (!root.opened) root.customizing = false; root.toggle() } }
     }
@@ -194,7 +201,7 @@ Panel {
     // Compensating for the button's transform prevents bar reflow from moving it.
     TransformWatcher {
         id: buttonTransform
-        a: button.QsWindow.window ? button.QsWindow.window.contentItem : null
+        a: root.barWindow ? root.barWindow.contentItem : null
         b: button
     }
     Item {
@@ -205,14 +212,14 @@ Panel {
         property point heldCenter: Qt.point(0, 0)
         property bool captured: false
         function capture() {
-            const window = button.QsWindow.window
+            const window = root.barWindow
             if (!window) return
             heldCenter = button.mapToItem(window.contentItem, button.width / 2, button.height / 2)
             captured = true
         }
         readonly property point currentOrigin: {
             buttonTransform.transform
-            const window = button.QsWindow.window
+            const window = root.barWindow
             return window ? button.mapToItem(window.contentItem, 0, 0) : Qt.point(0, 0)
         }
         x: captured ? heldCenter.x - currentOrigin.x : button.width / 2
@@ -264,8 +271,8 @@ Panel {
                         }
                         Column {
                             Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: Style.space(3)
-                            Text { width: parent.width; elide: Text.ElideRight; text: root.customizing ? "Customize" : "System QuikView"; color: root.ink; font.family: Style.font.family; font.pixelSize: Math.max(20, Style.font.title); font.bold: true }
-                            Text { width: parent.width; elide: Text.ElideRight; text: root.customizing ? "MAKE IT YOURS" : "YOUR SYSTEM, AT A GLANCE"; color: root.ink; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.space(10); font.letterSpacing: 1.3 }
+                            Text { width: parent.width; elide: Text.ElideRight; text: root.customizing ? "Customize" : "System QuikView"; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Math.max(20, root.themeFont.title); font.bold: true }
+                            Text { width: parent.width; elide: Text.ElideRight; text: root.customizing ? "MAKE IT YOURS" : "YOUR SYSTEM, AT A GLANCE"; color: root.ink; opacity: 0.5; font.family: root.themeFont.family; font.pixelSize: Style.space(10); font.letterSpacing: 1.3 }
                         }
                         Button { text: root.customizing ? "Done" : "Customize"; foreground: root.ink; bordered: true; focusable: true; onClicked: root.customizing = !root.customizing }
                     }
@@ -273,7 +280,7 @@ Panel {
                         width: parent.width; spacing: Style.space(6)
                         Rectangle { implicitWidth: Style.space(6); implicitHeight: implicitWidth; radius: width/2; color: root.stale ? Color.urgent : root.memoryColor }
                         Label { Layout.fillWidth: true; text: root.stale ? "Readings unavailable · retrying" : "Live  ·  every " + root.setting("interval", 2) + "s"; font.pixelSize: Style.space(12); opacity: 0.7 }
-                        Text { text: Math.floor((root.snapshot.uptime || 0) / 3600) + "h uptime"; color: root.ink; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.space(12) }
+                        Text { text: Math.floor((root.snapshot.uptime || 0) / 3600) + "h uptime"; color: root.ink; opacity: 0.5; font.family: root.themeFont.family; font.pixelSize: Style.space(12) }
                     }
                     Column {
                         width: parent.width; spacing: Style.space(14); visible: root.customizing
@@ -290,8 +297,8 @@ Panel {
                                     radius: Style.space(6); color: root.fade(root.ink, 0.035)
                                     RowLayout {
                                         anchors.fill: parent; anchors.margins: Style.space(5); spacing: Style.space(8)
-                                        Text { text: orderRow.index + 1; color: root.cpuColor; font.family: Style.font.family; font.pixelSize: Style.space(12); leftPadding: Style.space(7) }
-                                        Text { Layout.fillWidth: true; text: orderRow.entry.label || ""; elide: Text.ElideRight; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(12) }
+                                        Text { text: orderRow.index + 1; color: root.cpuColor; font.family: root.themeFont.family; font.pixelSize: Style.space(12); leftPadding: Style.space(7) }
+                                        Text { Layout.fillWidth: true; text: orderRow.entry.label || ""; elide: Text.ElideRight; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(12) }
                                         Button { text: "↑"; enabled: orderRow.index > 0; opacity: enabled ? 1 : 0.3; foreground: root.ink; bordered: true; focusable: true; tooltipText: "Move " + orderRow.entry.label + " up"; onClicked: root.moveSection(orderRow.entry.key, -1) }
                                         Button { text: "↓"; enabled: orderRow.index < root.sectionLayout.length - 1; opacity: enabled ? 1 : 0.3; foreground: root.ink; bordered: true; focusable: true; tooltipText: "Move " + orderRow.entry.label + " down"; onClicked: root.moveSection(orderRow.entry.key, 1) }
                                     }
@@ -308,7 +315,7 @@ Panel {
                                 model: root.choices
                                 Button {
                                     required property string modelData
-                                    text: modelData; foreground: root.ink; fontSize: Style.font.caption
+                                    text: modelData; foreground: root.ink; fontSize: root.themeFont.caption
                                     bordered: true; active: root.metric === modelData; focusable: true
                                     onClicked: root.save("metric", modelData)
                                 }
@@ -320,7 +327,7 @@ Panel {
                             model: root.sourceOptions.length
                             Choice {
                                 required property int index
-                                readonly property var modelData: root.sourceOptions[index]
+                                readonly property var modelData: root.sourceOptions[index] || ({label: "", value: ""})
                                 text: modelData.label; selected: root.gpuSource === modelData.value
                                 onClicked: root.save("gpuSource", modelData.value)
                             }
@@ -382,15 +389,16 @@ Panel {
                         Meter { value: root.snapshot.cpu }
                         Label { text: "Load  " + (root.snapshot.load || []).map(v => v.toFixed(2)).join("  /  "); opacity: 0.65 }
                         Grid {
+                            id: coreGrid
                             width: parent.width; columns: 8; spacing: Style.space(4)
                             Repeater {
                                 model: root.snapshot.cores || []
                                 Rectangle {
                                     required property var modelData
                                     required property int index
-                                    width: (parent.width - parent.spacing * 7) / 8; height: Style.space(28); radius: Style.space(3)
+                                    width: (coreGrid.width - coreGrid.spacing * 7) / 8; height: Style.space(28); radius: Style.space(3)
                                     color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.05 + (modelData || 0) / 250)
-                                    Text { anchors.centerIn: parent; text: root.pct(parent.modelData); color: root.ink; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+                                    Text { anchors.centerIn: parent; text: root.pct(parent.modelData); color: root.ink; font.family: root.themeFont.family; font.pixelSize: root.themeFont.caption }
                                 }
                             }
                         }
@@ -414,10 +422,11 @@ Panel {
                         Repeater {
                             model: root.snapshot.disks || []
                             Column {
+                                id: diskRow
                                 required property var modelData
                                 width: parent.width; spacing: Style.space(5)
-                                Label { text: modelData.name + "  ·  " + root.bytes(modelData.used) + " / " + root.bytes(modelData.total) }
-                                Meter { value: modelData.percent }
+                                Label { text: diskRow.modelData.name + "  ·  " + root.bytes(diskRow.modelData.used) + " / " + root.bytes(diskRow.modelData.total) }
+                                Meter { value: diskRow.modelData.percent }
                             }
                         }
                     }
@@ -459,8 +468,8 @@ Panel {
                                     RowLayout {
                                         width: parent.width; spacing: Style.space(7)
                                         Rectangle { implicitWidth: Style.space(5); implicitHeight: implicitWidth; radius: width / 2; color: interfaceCard.linked ? root.memoryColor : root.fade(root.ink, 0.4) }
-                                        Text { Layout.fillWidth: true; text: interfaceCard.net.name || ""; elide: Text.ElideRight; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true }
-                                        Text { text: (interfaceCard.net.kind || "Interface") + " · " + (interfaceCard.net.state || "unknown"); color: root.ink; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.space(10) }
+                                        Text { Layout.fillWidth: true; text: interfaceCard.net.name || ""; elide: Text.ElideRight; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(13); font.bold: true }
+                                        Text { text: (interfaceCard.net.kind || "Interface") + " · " + (interfaceCard.net.state || "unknown"); color: root.ink; opacity: 0.5; font.family: root.themeFont.family; font.pixelSize: Style.space(10) }
                                     }
                                     Row {
                                         width: parent.width
@@ -511,12 +520,12 @@ Panel {
                                             readonly property var sensor: thermalCard.group.sensors[index] || ({})
                                             readonly property string condition: Model.temperatureState(sensor)
                                             readonly property real limit: sensor.critical > 0 ? sensor.critical : sensor.maximum > 0 ? sensor.maximum : 100
-                                            width: parent.width; spacing: Style.space(4)
+                                            width: thermalBody.width; spacing: Style.space(4)
                                             RowLayout {
                                                 width: parent.width
-                                                Text { Layout.fillWidth: true; text: (sensorRow.sensor.label || sensorRow.sensor.name || "").replace(/^temp([0-9]+)$/, "Sensor $1"); elide: Text.ElideRight; color: root.ink; opacity: 0.75; font.family: Style.font.family; font.pixelSize: Style.space(12) }
-                                                Text { text: sensorRow.condition; visible: text !== ""; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.space(10) }
-                                                Text { text: root.temp(sensorRow.sensor.value); color: sensorRow.condition ? Color.urgent : root.temperatureColor; font.family: Style.font.family; font.pixelSize: Style.space(18); font.bold: true }
+                                                Text { Layout.fillWidth: true; text: (sensorRow.sensor.label || sensorRow.sensor.name || "").replace(/^temp([0-9]+)$/, "Sensor $1"); elide: Text.ElideRight; color: root.ink; opacity: 0.75; font.family: root.themeFont.family; font.pixelSize: Style.space(12) }
+                                                Text { text: sensorRow.condition; visible: text !== ""; color: Color.urgent; font.family: root.themeFont.family; font.pixelSize: Style.space(10) }
+                                                Text { text: root.temp(sensorRow.sensor.value); color: sensorRow.condition ? Color.urgent : root.temperatureColor; font.family: root.themeFont.family; font.pixelSize: Style.space(18); font.bold: true }
                                             }
                                             Rectangle {
                                                 width: parent.width; height: Style.space(4); radius: height/2; color: root.fade(root.temperatureColor, 0.12)
@@ -538,9 +547,9 @@ Panel {
                         summary: root.processes.length + " shown"
                         RowLayout {
                             width: parent.width; spacing: Style.space(10)
-                            Text { Layout.fillWidth: true; text: "RANKED BY CPU"; color: root.ink; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.space(10); font.letterSpacing: 1 }
-                            Text { Layout.preferredWidth: Style.space(64); text: "CPU"; horizontalAlignment: Text.AlignRight; color: root.cpuColor; font.family: Style.font.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1 }
-                            Text { Layout.preferredWidth: Style.space(88); text: "MEMORY"; horizontalAlignment: Text.AlignRight; color: root.memoryColor; font.family: Style.font.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1; rightPadding: Style.space(10) }
+                            Text { Layout.fillWidth: true; text: "RANKED BY CPU"; color: root.ink; opacity: 0.5; font.family: root.themeFont.family; font.pixelSize: Style.space(10); font.letterSpacing: 1 }
+                            Text { Layout.preferredWidth: Style.space(64); text: "CPU"; horizontalAlignment: Text.AlignRight; color: root.cpuColor; font.family: root.themeFont.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1 }
+                            Text { Layout.preferredWidth: Style.space(88); text: "MEMORY"; horizontalAlignment: Text.AlignRight; color: root.memoryColor; font.family: root.themeFont.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1; rightPadding: Style.space(10) }
                         }
                         Label { visible: !root.processes.length; text: "Waiting for process readings…"; opacity: 0.65 }
                         Repeater {
@@ -559,16 +568,16 @@ Panel {
                                     Rectangle {
                                         Layout.preferredWidth: Style.space(26); Layout.preferredHeight: width; radius: Style.space(7)
                                         color: root.fade(root.cpuColor, processCard.leading ? 0.18 : 0.07)
-                                        Text { anchors.centerIn: parent; text: String(processCard.index + 1).padStart(2, "0"); color: root.cpuColor; opacity: processCard.leading ? 1 : 0.55; font.family: Style.font.family; font.pixelSize: Style.space(11); font.bold: true }
+                                        Text { anchors.centerIn: parent; text: String(processCard.index + 1).padStart(2, "0"); color: root.cpuColor; opacity: processCard.leading ? 1 : 0.55; font.family: root.themeFont.family; font.pixelSize: Style.space(11); font.bold: true }
                                     }
                                     Column {
                                         Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: Style.space(6)
-                                        Text { width: parent.width; text: processCard.process.name || "—"; textFormat: Text.PlainText; elide: Text.ElideRight; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true }
-                                        Text { text: "PID " + (processCard.process.pid || "—"); color: root.ink; opacity: 0.4; font.family: Style.font.family; font.pixelSize: Style.space(10) }
+                                        Text { width: parent.width; text: processCard.process.name || "—"; textFormat: Text.PlainText; elide: Text.ElideRight; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(13); font.bold: true }
+                                        Text { text: "PID " + (processCard.process.pid || "—"); color: root.ink; opacity: 0.4; font.family: root.themeFont.family; font.pixelSize: Style.space(10) }
                                     }
                                     Column {
                                         Layout.preferredWidth: Style.space(64); spacing: Style.space(9)
-                                        Text { width: parent.width; text: root.stale ? "—" : (processCard.process.cpu || 0).toFixed(1) + "%"; horizontalAlignment: Text.AlignRight; color: root.cpuColor; font.family: Style.font.family; font.pixelSize: Style.space(14); font.bold: true; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(10) }
+                                        Text { width: parent.width; text: root.stale ? "—" : (processCard.process.cpu || 0).toFixed(1) + "%"; horizontalAlignment: Text.AlignRight; color: root.cpuColor; font.family: root.themeFont.family; font.pixelSize: Style.space(14); font.bold: true; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(10) }
                                         Rectangle {
                                             width: parent.width; height: Style.space(3); radius: height / 2; color: root.fade(root.cpuColor, 0.12)
                                             Rectangle { width: parent.width * (processCard.process.cpu || 0) / root.processCpuMaximum; height: parent.height; radius: height / 2; color: root.cpuColor }
@@ -576,7 +585,7 @@ Panel {
                                     }
                                     Column {
                                         Layout.preferredWidth: Style.space(88); spacing: Style.space(9)
-                                        Text { width: parent.width; text: root.stale ? "—" : root.bytes(processCard.process.memory); horizontalAlignment: Text.AlignRight; color: root.memoryColor; font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(10) }
+                                        Text { width: parent.width; text: root.stale ? "—" : root.bytes(processCard.process.memory); horizontalAlignment: Text.AlignRight; color: root.memoryColor; font.family: root.themeFont.family; font.pixelSize: Style.space(13); font.bold: true; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(10) }
                                         Rectangle {
                                             width: parent.width; height: Style.space(3); radius: height / 2; color: root.fade(root.memoryColor, 0.12)
                                             Rectangle { width: parent.width * (processCard.process.memory || 0) / root.processMemoryMaximum; height: parent.height; radius: height / 2; color: root.memoryColor }
@@ -594,19 +603,20 @@ Panel {
         id: gpuComponent
                         Section {
                             id: gpuSection
-                            readonly property var modelData: parent && parent.gpu ? parent.gpu : ({})
-                            sectionKey: "gpu-" + modelData.id
-                            legacyKey: "gpu-" + modelData.card
+                            readonly property var gpuHost: parent
+                            readonly property var modelData: gpuHost && gpuHost.gpu ? gpuHost.gpu : ({})
+                            sectionKey: "gpu-" + gpuSection.modelData.id
+                            legacyKey: "gpu-" + gpuSection.modelData.card
                             tint: root.gpuColor; icon: "󰢮"
-                            title: modelData.kind === "dedicated" ? "Dedicated GPU" : modelData.kind === "integrated" ? "Integrated GPU" : "Graphics processor"
-                            summary: root.pct(modelData.usage) + "  ·  " + root.temp(modelData.temp)
-                            Label { text: modelData.name; opacity: 0.75; wrapMode: Text.WordWrap; elide: Text.ElideNone }
-                            Meter { value: modelData.usage; tint: root.gpuColor }
-                            Label { text: modelData.usage === null ? "Utilization unavailable from this driver" : "Utilization  " + root.pct(modelData.usage) }
-                            Label { text: "VRAM  " + root.bytes(modelData.used) + " / " + root.bytes(modelData.total) }
+                            title: gpuSection.modelData.kind === "dedicated" ? "Dedicated GPU" : gpuSection.modelData.kind === "integrated" ? "Integrated GPU" : "Graphics processor"
+                            summary: root.pct(gpuSection.modelData.usage) + "  ·  " + root.temp(gpuSection.modelData.temp)
+                            Label { text: gpuSection.modelData.name; opacity: 0.75; wrapMode: Text.WordWrap; elide: Text.ElideNone }
+                            Meter { value: gpuSection.modelData.usage; tint: root.gpuColor }
+                            Label { text: gpuSection.modelData.usage === null ? "Utilization unavailable from this driver" : "Utilization  " + root.pct(gpuSection.modelData.usage) }
+                            Label { text: "VRAM  " + root.bytes(gpuSection.modelData.used) + " / " + root.bytes(gpuSection.modelData.total) }
                             Flow {
                                 width: parent.width; spacing: Style.space(5)
-                                Button { text: "Pin temperature ↗"; foreground: root.gpuColor; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: { let next = Object.assign({}, root.settings, {metric: "GPU temperature", gpuSource: modelData.id}); root.bar.shell.updateEntryInline(root.moduleName, next) } }
+                                Button { text: "Pin temperature ↗"; foreground: root.gpuColor; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: { let next = Object.assign({}, root.settings, {metric: "GPU temperature", gpuSource: gpuSection.modelData.id}); root.shellHost.shell.updateEntryInline(root.moduleName, next) } }
                             }
 
                         }
@@ -626,8 +636,8 @@ Panel {
         textFormat: Text.PlainText
         elide: Text.ElideRight
         color: root.ink
-        font.family: Style.font.family
-        font.pixelSize: Math.max(14, Style.font.body)
+        font.family: root.themeFont.family
+        font.pixelSize: Math.max(14, root.themeFont.body)
     }
     component Meter: Rectangle {
         property var value
@@ -652,10 +662,10 @@ Panel {
         color: root.fade(tint, 0.065); border.width: 1; border.color: root.fade(tint, 0.18)
         Column {
             anchors.fill: parent; anchors.margins: Style.space(11); spacing: Style.space(6)
-            Text { text: rate.heading; color: rate.tint; font.family: Style.font.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1 }
-            Text { width: parent.width; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(13); text: root.stale ? "—" : root.bytes(rate.value) + "/s"; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(22); font.bold: true }
+            Text { text: rate.heading; color: rate.tint; font.family: root.themeFont.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1 }
+            Text { width: parent.width; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(13); text: root.stale ? "—" : root.bytes(rate.value) + "/s"; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(22); font.bold: true }
             Sparkline { width: parent.width; height: Style.space(35); values: rate.samples; maximum: rate.graphMaximum; tint: rate.tint }
-            Text { text: "Peak " + root.bytes(rate.graphMaximum === 1024 ? Math.max(0, ...rate.samples.filter(v => v !== null)) : rate.graphMaximum) + "/s"; color: rate.tint; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.space(10) }
+            Text { text: "Peak " + root.bytes(rate.graphMaximum === 1024 ? Math.max(0, ...rate.samples.filter(v => v !== null)) : rate.graphMaximum) + "/s"; color: rate.tint; opacity: 0.6; font.family: root.themeFont.family; font.pixelSize: Style.space(10) }
         }
     }
     component ThermalHero: Rectangle {
@@ -667,9 +677,9 @@ Panel {
         color: root.fade(root.temperatureColor, 0.065); border.width: 1; border.color: root.fade(root.temperatureColor, 0.18)
         Column {
             anchors.fill: parent; anchors.margins: Style.space(11); spacing: Style.space(6)
-            Text { text: hero.heading; color: root.temperatureColor; font.family: Style.font.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1 }
-            Text { text: root.stale ? "—" : root.temp(hero.value); color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(28); font.bold: true }
-            Text { width: parent.width; text: hero.note; elide: Text.ElideRight; color: root.ink; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.space(10) }
+            Text { text: hero.heading; color: root.temperatureColor; font.family: root.themeFont.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1 }
+            Text { text: root.stale ? "—" : root.temp(hero.value); color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(28); font.bold: true }
+            Text { width: parent.width; text: hero.note; elide: Text.ElideRight; color: root.ink; opacity: 0.5; font.family: root.themeFont.family; font.pixelSize: Style.space(10) }
         }
     }
     component SummaryTile: Controls.AbstractButton {
@@ -694,9 +704,9 @@ Panel {
         contentItem: Item {
             Column {
                 anchors.fill: parent; anchors.margins: Style.space(12); spacing: Style.space(4)
-                Text { text: tile.title; color: tile.tint; font.family: Style.font.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1.2 }
-                Text { width: parent.width; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(16); text: root.stale ? "—" : tile.reading; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(29); font.bold: true }
-                Text { width: parent.width; elide: Text.ElideRight; text: tile.note; color: root.ink; opacity: 0.65; font.family: Style.font.family; font.pixelSize: Style.space(11) }
+                Text { text: tile.title; color: tile.tint; font.family: root.themeFont.family; font.pixelSize: Style.space(10); font.bold: true; font.letterSpacing: 1.2 }
+                Text { width: parent.width; fontSizeMode: Text.Fit; minimumPixelSize: Style.space(16); text: root.stale ? "—" : tile.reading; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(29); font.bold: true }
+                Text { width: parent.width; elide: Text.ElideRight; text: tile.note; color: root.ink; opacity: 0.65; font.family: root.themeFont.family; font.pixelSize: Style.space(11) }
                 Sparkline { width: parent.width; height: Style.space(25); values: tile.values; tint: tile.tint }
             }
         }
@@ -715,7 +725,7 @@ Panel {
         contentItem: RowLayout {
             spacing: Style.space(8)
             Text { text: choice.selected ? "●" : "○"; color: root.gpuColor; leftPadding: Style.space(10) }
-            Text { Layout.fillWidth: true; text: choice.text; textFormat: Text.PlainText; elide: Text.ElideRight; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(12); rightPadding: Style.space(10) }
+            Text { Layout.fillWidth: true; text: choice.text; textFormat: Text.PlainText; elide: Text.ElideRight; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(12); rightPadding: Style.space(10) }
         }
     }
     component Section: Rectangle {
@@ -746,9 +756,9 @@ Panel {
             }
             contentItem: RowLayout {
                 spacing: Style.space(10)
-                Text { text: section.icon; color: section.tint; font.family: Style.font.family; font.pixelSize: Style.space(17); leftPadding: Style.space(12) }
-                Text { text: section.title; Layout.fillWidth: true; color: root.ink; font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true; elide: Text.ElideRight }
-                Text { Layout.maximumWidth: parent.width * 0.48; elide: Text.ElideRight; text: section.summary; color: section.tint; opacity: 0.85; font.family: Style.font.family; font.pixelSize: Style.space(12) }
+                Text { text: section.icon; color: section.tint; font.family: root.themeFont.family; font.pixelSize: Style.space(17); leftPadding: Style.space(12) }
+                Text { text: section.title; Layout.fillWidth: true; color: root.ink; font.family: root.themeFont.family; font.pixelSize: Style.space(13); font.bold: true; elide: Text.ElideRight }
+                Text { Layout.maximumWidth: parent.width * 0.48; elide: Text.ElideRight; text: section.summary; color: section.tint; opacity: 0.85; font.family: root.themeFont.family; font.pixelSize: Style.space(12) }
                 Text { text: section.expanded ? "⌄" : "›"; color: root.ink; opacity: 0.5; font.pixelSize: Style.space(17); rightPadding: Style.space(12) }
             }
         }

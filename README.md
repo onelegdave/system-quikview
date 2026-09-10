@@ -166,6 +166,7 @@ Refresh defaults to **2 seconds**, configurable from **1–30 seconds** in Omarc
 ```sh
 python3 -m unittest -v
 node test_model.cjs
+./lint-qml.sh
 python3 monitor.py --once
 omarchy-plugin-validate .
 ```
