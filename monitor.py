@@ -10,8 +10,128 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import selectors
+import signal
+import stat
+from contextlib import contextmanager
 import time
 
+
+# Optional commands are limited to distro-managed ELF binaries. Never search
+# ambient PATH or execute the pathname again after checking a different file.
+TOOLS = {'lspci': '/usr/bin/lspci', 'nvidia-smi': '/usr/bin/nvidia-smi'}
+TOOL_ENV = {'PATH': '/usr/bin', 'LANG': 'C', 'LC_ALL': 'C'}
+STDOUT_LIMIT = 64 * 1024
+STDERR_LIMIT = 16 * 1024
+
+
+class ToolUnavailable(ValueError):
+    pass
+
+
+def trusted_node(info, directory=False):
+    expected = stat.S_ISDIR if directory else stat.S_ISREG
+    if (not expected(info.st_mode) or info.st_uid != 0
+            or info.st_mode & (0o022 | stat.S_ISUID | stat.S_ISGID)):
+        raise ToolUnavailable('Tool path must be root-owned and not writable by other users')
+
+
+@contextmanager
+def verified_tool(name):
+    path = TOOLS.get(name)
+    if path is None:
+        raise ToolUnavailable('Unknown optional tool')
+    parts = Path(path).parts
+    parent = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    executable = None
+    try:
+        trusted_node(os.fstat(parent), directory=True)
+        for part in parts[1:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                            dir_fd=parent)
+            os.close(parent)
+            parent = child
+            trusted_node(os.fstat(parent), directory=True)
+        executable = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                             dir_fd=parent)
+        info = os.fstat(executable)
+        trusted_node(info)
+        if not info.st_mode & 0o111 or os.pread(executable, 4, 0) != b'\x7fELF':
+            raise ToolUnavailable('Optional tool is not an executable ELF binary')
+        yield path, executable
+    finally:
+        if executable is not None:
+            os.close(executable)
+        os.close(parent)
+
+
+def bounded_process(path, executable_fd, args, timeout, stdout_limit=STDOUT_LIMIT, stderr_limit=STDERR_LIMIT):
+    """Execute the verified inode, cap BOTH pipes, and kill its session group.
+
+    Keep the group leader unreaped until cleanup so its PID/PGID cannot be
+    recycled while descendants are being killed. Linux waitid(WNOWAIT) lets us
+    observe exit without reaping. Never call poll()/communicate() here.
+    """
+    deadline = time.monotonic() + timeout
+    process = subprocess.Popen(
+        [path, *args], executable='/proc/self/fd/' + str(executable_fd),
+        pass_fds=(executable_fd,), stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=TOOL_ENV.copy(),
+        cwd='/', start_new_session=True, close_fds=True)
+    buffers = {'stdout': bytearray(), 'stderr': bytearray()}
+    limits = {'stdout': stdout_limit, 'stderr': stderr_limit}
+    try:
+        with selectors.DefaultSelector() as selector:
+            for stream, name in ((process.stdout, 'stdout'), (process.stderr, 'stderr')):
+                os.set_blocking(stream.fileno(), False)
+                selector.register(stream, selectors.EVENT_READ, name)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ToolUnavailable('Optional tool exceeded its deadline')
+                if not selector.get_map():
+                    exited = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                    if exited is not None:
+                        break
+                    time.sleep(min(0.01, remaining))
+                    continue
+                for key, _ in selector.select(min(remaining, 0.05)):
+                    name = key.data
+                    room = limits[name] - len(buffers[name])
+                    chunk = os.read(key.fileobj.fileno(), min(8192, room + 1))
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                    elif len(chunk) > room:
+                        raise ToolUnavailable('Optional tool exceeded its ' + name + ' limit')
+                    else:
+                        buffers[name].extend(chunk)
+    finally:
+        # Even successful parents may leave children behind. Kill the whole
+        # process group before reaping the leader; SIGKILL also handles tools
+        # that ignore SIGTERM. Pipe cleanup never waits for descendants.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.stdout.close()
+        process.stderr.close()
+        try:
+            process.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            # A kernel task stuck in uninterruptible I/O cannot be reaped on
+            # demand. Popen retains it for later cleanup; never block sampling.
+            pass
+    if process.returncode != 0:
+        raise ToolUnavailable('Optional tool exited unsuccessfully')
+    return bytes(buffers['stdout']).decode('utf-8', errors='replace')
+
+
+def tool_output(name, args, timeout):
+    try:
+        with verified_tool(name) as (path, fd):
+            return bounded_process(path, fd, args, timeout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
 
 def read(path, default=""):
     try:
@@ -112,10 +232,10 @@ def gpu_identity(device_path, vendor, slot):
     if vendor == '0x1002':
         role, name = amd_identity(dev)
         role = role or 'unknown'
-    if not name and shutil.which('lspci') and slot:
+    if not name and slot:
         try:
-            output = subprocess.run(['lspci', '-Dmm', '-s', slot], capture_output=True, text=True, timeout=1)
-            fields = shlex.split(output.stdout)
+            output = tool_output('lspci', ['-Dmm', '-s', slot], timeout=1)
+            fields = shlex.split(output) if output is not None else []
             if len(fields) >= 4:
                 name = fields[3]
         except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -137,12 +257,12 @@ def gpus():
                  'used': number(dev / 'mem_info_vram_used'), 'total': number(dev / 'mem_info_vram_total')}
         for hw in sorted((dev / 'hwmon').glob('hwmon*')):
             entry['temp'] = number(hw / 'temp1_input', 1000)
-        if vendor == '0x10de' and shutil.which('nvidia-smi') and slot:
+        if vendor == '0x10de' and slot:
             try:
-                output = subprocess.run(['nvidia-smi', '-i', slot, '--query-gpu=name,utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=1.5)
-                if output.returncode != 0:
+                output = tool_output('nvidia-smi', ['-i', slot, '--query-gpu=name,utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'], timeout=1.5)
+                if output is None:
                     raise ValueError('GPU telemetry unavailable')
-                row = next(csv.reader(output.stdout.splitlines()))
+                row = next(csv.reader(output.splitlines()))
                 if len(row) != 5:
                     raise ValueError('Unexpected GPU telemetry')
                 entry['name'] = row[0].strip()

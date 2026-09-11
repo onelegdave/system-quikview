@@ -18,7 +18,7 @@ class TelemetryTests(unittest.TestCase):
             self.assertIsNone(monitor.number('/missing'))
 
     def test_snapshot_missing_optional_gpu_tool(self):
-        with patch.object(monitor.shutil, 'which', return_value=None):
+        with patch.object(monitor, 'tool_output', return_value=None):
             snapshot = monitor.Sampler().sample()
         self.assertIsNone(snapshot['cpu'])
         self.assertGreater(snapshot['memory']['total'], 0)

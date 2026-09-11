@@ -199,6 +199,12 @@ class InstallerSecurityTests(unittest.TestCase):
                 self.run_install()
         self.assertEqual(json.loads(shell.read_text()), {'concurrent': True})
 
+    def test_installer_entrypoint_does_not_launch_processes(self):
+        with patch.object(install.Path, 'home', return_value=self.home), patch.object(install, '__file__', str(self.source / 'install.py')), patch('subprocess.Popen') as launch, patch('builtins.print'):
+            install.install()
+        launch.assert_not_called()
+        self.assertTrue((self.target / 'Panel.qml').is_file())
+
     def test_source_symlink(self):
         (self.source / 'Panel.qml').unlink()
         (self.source / 'Panel.qml').symlink_to(self.outside / 'sentinel')

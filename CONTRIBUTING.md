@@ -12,6 +12,7 @@ node test_model.cjs
 ./lint-qml.sh
 omarchy-plugin-validate .
 python3 install.py
+omarchy restart shell
 ```
 
 Use a local user-plugin installation for development; never edit `/usr/share/omarchy/`. The installer backs up previous local files and configuration. User plugin code should reload automatically; `omarchy restart shell` clears stale components when necessary.

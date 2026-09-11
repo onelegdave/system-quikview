@@ -7,7 +7,6 @@ from pathlib import Path
 import stat
 import secrets
 from contextlib import contextmanager, ExitStack
-import subprocess
 
 PLUGIN_ID = 'onelegdave.system-quikview'
 LEGACY_ID = 'onelegdave.btop'
@@ -280,9 +279,8 @@ def install_files(home, source):
 def install():
     home = Path.home()
     install_files(home, Path(__file__).absolute().parent)
-    subprocess.run(['omarchy-shell', 'shell', 'rescanPlugins'], check=True)
     print('Installed:', home / '.config/omarchy/plugins' / PLUGIN_ID)
-    print('If old code remains cached, run: omarchy restart shell')
+    print('To load or refresh the plugin, run: omarchy restart shell')
 
 
 if __name__ == '__main__':

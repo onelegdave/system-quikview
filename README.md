@@ -46,6 +46,7 @@ omarchy plugin enable onelegdave.system-quikview --section right
 git clone https://github.com/onelegdave/system-quikview.git
 cd system-quikview
 python3 install.py
+omarchy restart shell
 ```
 
 The local installer backs up your shell configuration and any previous local plugin version, then copies the runtime files into `~/.config/omarchy/plugins/onelegdave.system-quikview`. It also migrates the early `onelegdave.btop` prototype while preserving its placement and preferences.
@@ -66,7 +67,7 @@ For an installation made with `omarchy plugin add`:
 omarchy plugin update onelegdave.system-quikview
 ```
 
-For a local checkout, run `git pull` in the checkout and then `python3 install.py` again. If Quickshell retains an old component after an update, run `omarchy restart shell`.
+For a local checkout, run `git pull` in the checkout, then `python3 install.py` and `omarchy restart shell` again. If Quickshell retains an old component after an update, run `omarchy restart shell`.
 
 ```sh
 omarchy plugin disable onelegdave.system-quikview
@@ -143,7 +144,11 @@ QuikView reports what the running Linux kernel and drivers make available. A mis
 
 Tested live on an AMD integrated / NVIDIA dedicated laptop. Intel and other GPU combinations are **not** yet hardware-validated. Software tests cover no GPU, a single GPU, multiple GPUs, missing readings, device selection, and reconnection-related layout behavior.
 
-Optional `lspci` improves device names. NVIDIA queries have a timeout. Nothing is installed automatically by the telemetry collector.
+Optional `lspci` improves device names. The collector only accepts `/usr/bin/lspci` and `/usr/bin/nvidia-smi`: root-owned, non-symlink ELF executables under root-owned directories that other users cannot write. Missing or rejected tools leave the corresponding optional readings unavailable.
+
+Each invocation runs the verified executable file descriptor, with a fixed environment (`PATH=/usr/bin`, `LANG=C`, `LC_ALL=C`) and working directory `/`. Output is limited to **64 KiB stdout** and **16 KiB stderr**. Deadlines are **1 second** for lspci and **1.5 seconds** for nvidia-smi, followed by at most **0.5 seconds** of waiting for process cleanup. The process group is killed on completion, timeout, or overflow, including descendants left behind by the tool. This is resource limiting, not a sandbox.
+
+Nothing is installed automatically by the collector. The local installer launches no subprocesses; run `omarchy restart shell` yourself after installation to load the plugin.
 
 ## What the numbers mean
 
