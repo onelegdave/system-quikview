@@ -50,6 +50,12 @@ python3 install.py
 
 The local installer backs up your shell configuration and any previous local plugin version, then copies the runtime files into `~/.config/omarchy/plugins/onelegdave.system-quikview`. It also migrates the early `onelegdave.btop` prototype while preserving its placement and preferences.
 
+The local installer refuses symlinked path components, targets, backup paths, and files, as well as unexpected owners/types, hard-linked files, and group/world-writable destinations. It uses directory-relative operations and atomic file replacement; it never writes through an existing destination file. A concurrent change to `shell.json` aborts the configuration update instead of overwriting that change.
+
+Configuration reads are limited to **1 MiB**. Backup trees are limited to **128 MiB**, **4,096 entries**, and **32 nesting levels**, with a **32 MiB** per-file limit. Unsafe or oversized paths cause installation to stop with an explanation; the installer does not automatically change their permissions or follow their links. Use the native Omarchy installer when a custom filesystem layout is incompatible.
+
+Legacy prototype files are backed up and then retired under a hidden name in the plugins directory. File updates are atomic individually; a failure midway through an update can leave a mix of versions, with the previous files preserved in the backup.
+
 `onelegdave` is the publisher namespace—not a requirement to use that username. Packaged Omarchy files are never modified.
 
 ### Update or remove

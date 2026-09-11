@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "onelegdave.system-quikview",
   "name": "System QuikView",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "author": "OneLegDave",
   "license": "MIT",
   "description": "Your system at a glance: live history, collapsible cards, and configurable GPU sources.",
