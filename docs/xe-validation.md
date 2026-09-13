@@ -34,3 +34,24 @@ a remapped agent sandbox can cause its ancestor-ownership assertions to fail.
 The suite passed outside that remapped environment without code changes.
 
 Intel discrete Xe and older Intel `i915` hardware have not been tested live.
+
+## Shared DRM follow-up
+
+The collector now shares its utilization fallback across DRM drivers. It accepts
+standard nanosecond busy-time counters and paired busy/total-cycle counters,
+keeping each clock format separate when calculating deltas. AMD sysfs and
+NVIDIA SMI utilization continue to take priority. Non-PCI devices can be matched
+through their discovered DRM device nodes. No GPU role is guessed for i915.
+
+Identification cache entries expire within 30 seconds; driver or PCI device ID
+changes also trigger a new probe. Tests reproduce recovery after a failed query.
+
+The focused suite adds seven tests covering standard time counters, units and
+capacity, driver/clock changes, non-PCI mapping and duplicate descriptors,
+identification recovery, preferred vendor readings, and fallback integration.
+The broader system compatibility matrix and additional physical hardware checks
+remain deferred. Intel i915 support is software-tested, not hardware-validated.
+
+The follow-up passed all 61 Python tests, model tests, QML lint, and manifest
+validation. Live collector checks retained AMD integrated and NVIDIA dedicated
+readings on the hybrid laptop and Intel Xe utilization on the Intel laptop.

@@ -18,25 +18,25 @@ def fdinfo(client=7, slot='0000:00:02.0', busy=100, total=1000, capacity=1):
 
 class XeTests(unittest.TestCase):
     def test_parse_actual_xe_format(self):
-        key, engines = monitor.xe_fdinfo(fdinfo() + 'drm-total-gtt:\t68416 KiB\n')
-        self.assertEqual(key, ('0000:00:02.0', '7'))
-        self.assertEqual(engines, {'rcs': (100, 1000, 1)})
-        self.assertEqual(monitor.xe_fdinfo(fdinfo().replace('drm-engine-capacity-rcs:\t1\n', ''))[1], engines)
+        key, engines = monitor.drm_fdinfo(fdinfo() + 'drm-total-gtt:\t68416 KiB\n')
+        self.assertEqual(key, ('0000:00:02.0', 'xe', '7'))
+        self.assertEqual(engines, {'cycles:rcs': (100, 1000, 1)})
+        self.assertEqual(monitor.drm_fdinfo(fdinfo().replace('drm-engine-capacity-rcs:\t1\n', ''))[1], engines)
 
     def test_invalid_and_incomplete_counters(self):
-        for text in [fdinfo().replace('xe', 'i915'), fdinfo().replace('drm-client-id', 'missing'), '']:
-            self.assertIsNone(monitor.xe_fdinfo(text))
+        for text in [fdinfo().replace('drm-driver', 'missing'), fdinfo().replace('drm-client-id', 'missing'), '']:
+            self.assertIsNone(monitor.drm_fdinfo(text))
         for text in [fdinfo(capacity=0), fdinfo(busy=-1), fdinfo(busy='NaN'), fdinfo().replace('drm-total-cycles', 'missing')]:
-            self.assertEqual(monitor.xe_fdinfo(text)[1], {})
+            self.assertEqual(monitor.drm_fdinfo(text)[1], {})
 
     def test_usage_warmup_idle_and_load(self):
-        sampler = monitor.XeUsage()
-        self.assertEqual(sampler.sample(dict([monitor.xe_fdinfo(fdinfo())])), {})
-        self.assertEqual(sampler.sample(dict([monitor.xe_fdinfo(fdinfo(total=2000))])), {'0000:00:02.0': 0})
-        self.assertEqual(sampler.sample(dict([monitor.xe_fdinfo(fdinfo(busy=350, total=3000))])), {'0000:00:02.0': 25})
+        sampler = monitor.DrmUsage()
+        self.assertEqual(sampler.sample(dict([monitor.drm_fdinfo(fdinfo())])), {})
+        self.assertEqual(sampler.sample(dict([monitor.drm_fdinfo(fdinfo(total=2000))])), {'0000:00:02.0': 0})
+        self.assertEqual(sampler.sample(dict([monitor.drm_fdinfo(fdinfo(busy=350, total=3000))])), {'0000:00:02.0': 25})
 
     def test_capacity_and_concurrent_engines_and_devices(self):
-        sampler = monitor.XeUsage()
+        sampler = monitor.DrmUsage()
         first = {('A', '1'): {'rcs': (0, 1000, 1), 'ccs': (0, 1000, 4)},
                  ('A', '2'): {'rcs': (0, 1000, 1)}, ('B', '1'): {'rcs': (0, 1000, 1)}}
         second = {('A', '1'): {'rcs': (200, 2000, 1), 'ccs': (2000, 2000, 4)},
@@ -45,7 +45,7 @@ class XeTests(unittest.TestCase):
         self.assertEqual(sampler.sample(second), {'A': 50, 'B': 90})
 
     def test_counter_regression_keeps_high_water_mark(self):
-        sampler = monitor.XeUsage()
+        sampler = monitor.DrmUsage()
         def sample(busy, total):
             return sampler.sample({('A', '1'): {'rcs': (busy, total, 1)}})
         sample(100, 1000)
@@ -57,8 +57,8 @@ class XeTests(unittest.TestCase):
         self.assertEqual(sample(50, 110), {})  # stopped GPU clock
 
     def test_missing_new_clients_and_failed_scans_need_warmup(self):
-        sampler = monitor.XeUsage()
-        a = {('A', '1'): {'rcs': (100, 1000, 1)}}
+        sampler = monitor.DrmUsage()
+        a = {('A', '1'): {'cycles:rcs': (100, 1000, 1)}}
         sampler.sample(a)
         self.assertEqual(sampler.sample({}), {})
         self.assertEqual(sampler.sample(a), {})
@@ -67,7 +67,7 @@ class XeTests(unittest.TestCase):
         self.assertEqual(sampler.sample({('A', '2'): {'rcs': (9000, 10000, 1)}}), {})
 
     def test_saturated_reading_is_bounded(self):
-        sampler = monitor.XeUsage()
+        sampler = monitor.DrmUsage()
         sampler.sample({('A', '1'): {'rcs': (0, 10, 1)}})
         self.assertEqual(sampler.sample({('A', '1'): {'rcs': (1000, 20, 1)}}), {'A': 100})
 
@@ -82,13 +82,13 @@ class XeTests(unittest.TestCase):
                     (root / pid / 'fd' / fd).symlink_to('/dev/dri/renderD128')
                 (root / pid / 'fdinfo' / '6').write_text(fdinfo(client=99))
                 (root / pid / 'fd' / '6').symlink_to('/dev/null')
-            clients = monitor.xe_clients({'0000:00:02.0', '0000:01:00.0'}, root)
+            clients = monitor.drm_clients({'0000:00:02.0', '0000:01:00.0'}, root)
             self.assertEqual(len(clients), 2)
-            self.assertEqual(len(monitor.xe_clients({'0000:00:02.0'}, root)), 1)
+            self.assertEqual(len(monitor.drm_clients({'0000:00:02.0'}, root)), 1)
             with patch.object(monitor.os, 'readlink', side_effect=PermissionError):
-                self.assertEqual(monitor.xe_clients({'0000:00:02.0'}, root), {})
+                self.assertEqual(monitor.drm_clients({'0000:00:02.0'}, root), {})
             with patch.object(monitor.time, 'monotonic', side_effect=[0, 1]):
-                self.assertIsNone(monitor.xe_clients({'0000:00:02.0'}, root))
+                self.assertIsNone(monitor.drm_clients({'0000:00:02.0'}, root))
 
     def test_xe_identity_query_flags_and_failures(self):
         with tempfile.TemporaryDirectory() as tmp:
