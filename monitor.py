@@ -3,6 +3,7 @@
 import argparse
 import csv
 import ctypes
+import fcntl
 from functools import lru_cache
 import shlex
 import json
@@ -13,6 +14,7 @@ import subprocess
 import selectors
 import signal
 import stat
+import struct
 from contextlib import contextmanager
 import time
 
@@ -225,6 +227,135 @@ def amd_identity(dev):
             os.close(fd)
 
 
+def xe_identity(dev):
+    """Read Xe's HAS_VRAM configuration flag, without allocating GPU objects."""
+    render = next((dev / 'drm').glob('renderD*'), None)
+    if render is None:
+        return 'unknown'
+    try:
+        fd = os.open('/dev/dri/' + render.name, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+        try:
+            if not stat.S_ISCHR(os.fstat(fd).st_mode):
+                return 'unknown'
+            # Linux DRM_IOCTL_XE_DEVICE_QUERY; struct drm_xe_device_query (40 B).
+            request = 0xc0286440
+            query = bytearray(struct.pack('=QIIQQQ', 0, 2, 0, 0, 0, 0))
+            fcntl.ioctl(fd, request, query)
+            size = struct.unpack_from('=I', query, 12)[0]
+            if not 24 <= size <= 4096:
+                return 'unknown'
+            data = ctypes.create_string_buffer(size)
+            struct.pack_into('=Q', query, 16, ctypes.addressof(data))
+            fcntl.ioctl(fd, request, query)
+            count = struct.unpack_from('=I', data)[0]
+            if count < 2 or 8 + count * 8 > size:
+                return 'unknown'
+            flags = struct.unpack_from('=Q', data, 16)[0]
+            return 'dedicated' if flags & 1 else 'integrated'
+        finally:
+            os.close(fd)
+    except (OSError, ValueError):
+        return 'unknown'
+
+
+def xe_fdinfo(text):
+    """Parse the standardized per-client Xe cycle counters, ignoring other keys."""
+    fields = dict(line.split(':', 1) for line in text.splitlines() if ':' in line)
+    fields = {key: value.strip() for key, value in fields.items()}
+    client = fields.get('drm-client-id', '')
+    slot = fields.get('drm-pdev', '')
+    if fields.get('drm-driver') != 'xe' or not client.isdecimal() or not slot:
+        return None
+    engines = {}
+    for key, value in fields.items():
+        if not key.startswith('drm-cycles-'):
+            continue
+        engine = key[len('drm-cycles-'):]
+        try:
+            busy = int(value)
+            total = int(fields['drm-total-cycles-' + engine])
+            capacity = int(fields.get('drm-engine-capacity-' + engine, '1'))
+            if busy >= 0 and total >= 0 and capacity > 0:
+                engines[engine] = (busy, total, capacity)
+        except (KeyError, ValueError):
+            continue
+    return (slot, client), engines
+
+
+def xe_clients(slots, proc_root=Path('/proc')):
+    """Readable clients of this user only. Never open a process's actual FD.
+
+    Deduplicate shared/duplicated DRM files by (PCI device, client ID). Stop
+    oversized scans with an unavailable sample rather than a misleading zero.
+    """
+    clients = {}
+    deadline = time.monotonic() + 0.25
+    scanned = 0
+    try:
+        for proc in proc_root.iterdir():
+            if time.monotonic() > deadline:
+                return None
+            if not proc.name.isdecimal():
+                continue
+            try:
+                if proc.stat().st_uid != os.getuid():
+                    continue
+                with os.scandir(proc / 'fdinfo') as files:
+                    for entry in files:
+                        scanned += 1
+                        if scanned > 32768 or time.monotonic() > deadline:
+                            return None
+                        try:
+                            if not os.readlink(proc / 'fd' / entry.name).startswith('/dev/dri/'):
+                                continue
+                            with open(entry.path) as info:
+                                content = info.read(16385)
+                            if len(content) > 16384:
+                                continue
+                            parsed = xe_fdinfo(content)
+                            if parsed and parsed[0][0] in slots:
+                                clients.setdefault(*parsed)
+                        except (OSError, ValueError):
+                            continue
+            except OSError:
+                continue
+    except OSError:
+        return None
+    return clients
+
+
+class XeUsage:
+    def __init__(self):
+        self.previous = {}
+
+    def sample(self, clients):
+        if clients is None:
+            self.previous = {}
+            return {}
+        current, engines = {}, {}
+        for client, counters in clients.items():
+            current[client] = dict(counters)
+            for engine, (busy, total, capacity) in counters.items():
+                old = self.previous.get(client, {}).get(engine)
+                if old is None or total < old[1] or capacity != old[2]:
+                    continue
+                if total == old[1]:
+                    current[client][engine] = old
+                    continue
+                # DRM counters can temporarily go backwards. Keep the high
+                # water mark until they catch up, as the fdinfo ABI requires.
+                busy = max(busy, old[0])
+                current[client][engine] = (busy, total, capacity)
+                key = (client[0], engine)
+                engines[key] = engines.get(key, 0) + (busy - old[0]) / (total - old[1]) / capacity
+        self.previous = current
+        usage = {}
+        for (slot, _), value in engines.items():
+            # Engine classes run concurrently; adding them would overcount.
+            usage[slot] = max(usage.get(slot, 0), round(min(100, 100 * value), 1))
+        return usage
+
+
 @lru_cache(maxsize=32)
 def gpu_identity(device_path, vendor, slot):
     dev = Path(device_path)
@@ -232,6 +363,8 @@ def gpu_identity(device_path, vendor, slot):
     if vendor == '0x1002':
         role, name = amd_identity(dev)
         role = role or 'unknown'
+    elif vendor == '0x8086' and (dev / 'driver').resolve().name == 'xe':
+        role = xe_identity(dev)
     if not name and slot:
         try:
             output = tool_output('lspci', ['-Dmm', '-s', slot], timeout=1)
@@ -243,7 +376,7 @@ def gpu_identity(device_path, vendor, slot):
     return role, name or {'0x1002': 'AMD GPU', '0x8086': 'Intel GPU', '0x10de': 'NVIDIA GPU'}.get(vendor, 'Graphics device')
 
 
-def gpus():
+def gpus(xe_usage=None):
     result = []
     for card in sorted(Path('/sys/class/drm').glob('card[0-9]*')):
         if '-' in card.name or not (card / 'device').exists():
@@ -255,6 +388,10 @@ def gpus():
         entry = {'id': slot or str(dev.resolve()), 'card': card.name, 'name': name, 'kind': role,
                  'usage': number(dev / 'gpu_busy_percent'), 'temp': None,
                  'used': number(dev / 'mem_info_vram_used'), 'total': number(dev / 'mem_info_vram_total')}
+        if vendor == '0x8086' and (dev / 'driver').resolve().name == 'xe':
+            entry['usageSource'] = 'xe-fdinfo'
+            if role == 'integrated':
+                entry['sharedMemory'] = True
         for hw in sorted((dev / 'hwmon').glob('hwmon*')):
             entry['temp'] = number(hw / 'temp1_input', 1000)
         if vendor == '0x10de' and slot:
@@ -274,6 +411,12 @@ def gpus():
             except (OSError, subprocess.TimeoutExpired, StopIteration, IndexError, ValueError):
                 pass
         result.append(entry)
+    slots = {g['id'] for g in result if g.get('usageSource') == 'xe-fdinfo' and g['usage'] is None}
+    if xe_usage is not None:
+        usage = xe_usage.sample(xe_clients(slots) if slots else {})
+        for entry in result:
+            if entry['id'] in slots:
+                entry['usage'] = usage.get(entry['id'])
     return result
 
 
@@ -283,6 +426,7 @@ class Sampler:
         self.net = {}
         self.procs = {}
         self.when = None
+        self.xe_usage = XeUsage()
         self.ticks = os.sysconf('SC_CLK_TCK')
 
     def sample(self):
@@ -350,7 +494,7 @@ class Sampler:
                 'load': list(os.getloadavg()), 'uptime': float(read('/proc/uptime', '0').split()[0]),
                 'memory': {'used': used, 'total': total, 'percent': round(100 * used / total, 1) if total else None,
                            'swapUsed': mem.get('SwapTotal', 0) - mem.get('SwapFree', 0), 'swapTotal': mem.get('SwapTotal', 0)},
-                'gpus': gpus(), 'temperatures': temps, 'cpuTemp': max(cpu_temps) if cpu_temps else None,
+                'gpus': gpus(self.xe_usage), 'temperatures': temps, 'cpuTemp': max(cpu_temps) if cpu_temps else None,
                 'networks': networks, 'disks': disks, 'processes': processes[:8]}
 
 

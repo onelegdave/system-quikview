@@ -612,8 +612,9 @@ Panel {
                             summary: root.pct(gpuSection.modelData.usage) + "  ·  " + root.temp(gpuSection.modelData.temp)
                             Label { text: gpuSection.modelData.name; opacity: 0.75; wrapMode: Text.WordWrap; elide: Text.ElideNone }
                             Meter { value: gpuSection.modelData.usage; tint: root.gpuColor }
-                            Label { text: gpuSection.modelData.usage === null ? "Utilization unavailable from this driver" : "Utilization  " + root.pct(gpuSection.modelData.usage) }
-                            Label { text: "VRAM  " + root.bytes(gpuSection.modelData.used) + " / " + root.bytes(gpuSection.modelData.total) }
+                            Label { text: gpuSection.modelData.usage === null ? "Utilization unavailable" : "Utilization  " + root.pct(gpuSection.modelData.usage) + (gpuSection.modelData.usageSource === "xe-fdinfo" ? " · session estimate" : "") }
+                            Label { visible: gpuSection.modelData.usageSource === "xe-fdinfo"; text: "Busiest engine · readable apps owned by your user"; opacity: 0.65; wrapMode: Text.WordWrap; elide: Text.ElideNone }
+                            Label { text: gpuSection.modelData.sharedMemory ? "Shared system memory · no dedicated VRAM" : "VRAM  " + root.bytes(gpuSection.modelData.used) + " / " + root.bytes(gpuSection.modelData.total) }
                             Flow {
                                 width: parent.width; spacing: Style.space(5)
                                 Button { text: "Pin temperature ↗"; foreground: root.gpuColor; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: { let next = Object.assign({}, root.settings, {metric: "GPU temperature", gpuSource: gpuSection.modelData.id}); root.shellHost.shell.updateEntryInline(root.moduleName, next) } }

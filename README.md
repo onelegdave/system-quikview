@@ -140,9 +140,14 @@ QuikView reports what the running Linux kernel and drivers make available. A mis
 | Temperature sensors | Linux hwmon, plus GPU temperature when supplied by the GPU collector |
 | AMD GPU | sysfs readings; optional `libdrm_amdgpu` identifies integrated vs. dedicated |
 | NVIDIA GPU | `nvidia-smi`, when installed and working |
-| Intel / other GPUs | Detected through DRM; only exposed sysfs readings are available. A role can be assigned manually |
+| Intel Xe (`xe` driver) | Per-user utilization estimate from DRM activity counters; integrated/dedicated role from the driver configuration |
+| Other GPUs, including Intel `i915` | Detected through DRM; only exposed sysfs readings are available. A role can be assigned manually |
 
-Tested live on an AMD integrated / NVIDIA dedicated laptop. Intel and other GPU combinations are **not** yet hardware-validated. Software tests cover no GPU, a single GPU, multiple GPUs, missing readings, device selection, and reconnection-related layout behavior.
+Tested live on an AMD integrated / NVIDIA dedicated laptop and Intel Core Ultra 200V integrated graphics using `xe`. Intel `i915` and Intel discrete graphics are not yet hardware-validated. Software tests cover no GPU, a single GPU, multiple GPUs, missing readings, device selection, and reconnection-related layout behavior.
+
+Intel Xe usage is a **session estimate**: QuikView sums readable clients owned by your user within each engine class, accounts for engine capacity, and shows the busiest class. Shared file descriptors are counted once. Other users' workloads and clients that disappear between samples can be missed. The first sample, inaccessible counters, and interrupted scans show unavailable rather than a made-up zero. No root access, performance-counter permissions, or extra monitoring packages are required.
+
+An integrated Xe GPU shares system RAM, so its card says **Shared system memory · no dedicated VRAM**. QuikView does not substitute total system RAM for VRAM or CPU temperature for GPU temperature. If the driver exposes no GPU temperature sensor, that reading remains unavailable. The collector follows the kernel's [DRM client statistics interface](https://www.kernel.org/doc/html/latest/gpu/drm-usage-stats.html) and [Xe counter format](https://www.kernel.org/doc/html/latest/gpu/xe/xe-drm-usage-stats.html).
 
 Optional `lspci` improves device names. The collector only accepts `/usr/bin/lspci` and `/usr/bin/nvidia-smi`: root-owned, non-symlink ELF executables under root-owned directories that other users cannot write. Missing or rejected tools leave the corresponding optional readings unavailable.
 
