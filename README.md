@@ -204,6 +204,10 @@ The main files are `Panel.qml` (dashboard and customization), `monitor.py` (tele
 
 [Contributor notes and diagnostic commands](CONTRIBUTING.md)
 
+## AI assistance
+
+AI tools were used to assist work on this project, including development and documentation. AI assistance is acknowledged here; authorship and maintenance remain with the human project contributors.
+
 ## License
 
 [MIT](LICENSE) © OneLegDave
