@@ -57,7 +57,8 @@ Panel {
         {key: "overview", label: "Overview cards"}, {key: "cpu", label: "Processor"}, {key: "memory", label: "Memory"}
     ].concat(gpuList.map(g => ({key: "gpu-" + g.id, label: (g.kind === "dedicated" ? "Dedicated GPU" : g.kind === "integrated" ? "Integrated GPU" : "GPU") + " · " + g.name}))).concat([
         {key: "disks", label: "Storage"}, {key: "network", label: "Network"},
-        {key: "temperatures", label: "Temperatures"}, {key: "processes", label: "Top processes"}
+        {key: "temperatures", label: "Temperatures"}, {key: "processes", label: "Top processes"},
+        {key: "about", label: "About"}
     ])
     readonly property var sectionLayout: Model.orderedSections(setting("sectionOrder", []), availableSections)
     function moveSection(key, direction) {
@@ -67,7 +68,7 @@ Panel {
     function sectionComponent(key) {
         if (key && key.indexOf("gpu-") === 0) return gpuComponent
         return {overview: overviewComponent, cpu: cpuComponent, memory: memoryComponent, disks: disksComponent,
-            network: networkComponent, temperatures: temperaturesComponent, processes: processesComponent}[key] || null
+            network: networkComponent, temperatures: temperaturesComponent, processes: processesComponent, about: aboutComponent}[key] || null
     }
     readonly property var networks: snapshot.networks || []
     readonly property int inactiveNetworkCount: networks.filter(n => n.state === "down").length
@@ -82,6 +83,8 @@ Panel {
     readonly property real processMemoryMaximum: Math.max(1, ...processes.map(p => p.memory || 0))
     property var history: ({})
     readonly property string gpuSource: setting("gpuSource", "auto")
+    property string xProfileUrl: "https://x.com/OneLegDavePDX"
+    property string buyMeACoffeeUrl: "https://buymeacoffee.com/onelegdave"
     readonly property var gpuRoles: setting("gpuRoles", ({}))
     readonly property var sourceOptions: [
         {value: "auto", label: "Auto · prefer dedicated"},
@@ -631,6 +634,38 @@ Panel {
                         SummaryTile { width: (parent.width - parent.spacing * 2) / 3; title: "MEMORY"; reading: root.pct((root.snapshot.memory || {}).percent); note: root.bytes((root.snapshot.memory || {}).used); tint: root.memoryColor; values: root.history.memory || []; metricName: "Memory" }
                         SummaryTile { width: (parent.width - parent.spacing * 2) / 3; title: "GPU"; reading: root.pct(root.primaryGpu.usage); note: root.temp(root.primaryGpu.temp); tint: root.gpuColor; values: root.history[root.primaryGpu.id] || []; metricName: "GPU" }
                     }
+    }
+
+    Component {
+        id: aboutComponent
+        Section {
+            sectionKey: "about"; title: "About"; icon: "ℹ"; summary: "Credits and links"
+            Column {
+                width: parent.width; spacing: Style.space(12)
+                Label {
+                    text: "System QuikView is a native Omarchy monitor by OneLegDave. Built on Quickshell and Python. Codex provided AI assistance during development.\nDistributed under the MIT License."
+                    opacity: 0.8
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    lineHeight: 1.3
+                }
+                Label {
+                    visible: root.buyMeACoffeeUrl !== ""
+                    text: "I build free open-source tools for the Linux desktop. If you find this useful, consider supporting my work. Contributions are entirely optional."
+                    opacity: 0.8
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+                Flow {
+                    width: parent.width; spacing: Style.space(5)
+                    Button { text: "Website ↗"; Accessible.role: Accessible.Button; Accessible.name: "Visit OneLegDave website"; foreground: root.ink; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: Qt.openUrlExternally("https://www.onelegdave.dev/") }
+                    Button { text: "GitHub ↗"; Accessible.role: Accessible.Button; Accessible.name: "Visit OneLegDave GitHub profile"; foreground: root.ink; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: Qt.openUrlExternally("https://github.com/onelegdave") }
+                    Button { text: "Source ↗"; Accessible.role: Accessible.Button; Accessible.name: "View System QuikView source code"; foreground: root.ink; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: Qt.openUrlExternally("https://github.com/onelegdave/system-quikview") }
+                    Button { visible: root.xProfileUrl !== ""; text: "X / Twitter ↗"; Accessible.role: Accessible.Button; Accessible.name: "Visit OneLegDave X profile"; foreground: root.ink; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: Qt.openUrlExternally(root.xProfileUrl) }
+                    Button { visible: root.buyMeACoffeeUrl !== ""; text: "Buy Me a Coffee ↗"; Accessible.role: Accessible.Button; Accessible.name: "Support on Buy Me a Coffee"; foreground: root.ink; bordered: true; focusable: true; fontSize: Style.space(11); onClicked: Qt.openUrlExternally(root.buyMeACoffeeUrl) }
+                }
+            }
+        }
     }
     component Label: Text {
         width: parent.width

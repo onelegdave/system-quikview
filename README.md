@@ -210,9 +210,22 @@ The main files are `Panel.qml` (dashboard and customization), `monitor.py` (tele
 
 [Contributor notes and diagnostic commands](CONTRIBUTING.md)
 
+## About and support
+
+System QuikView is a native Omarchy monitor created by OneLegDave, built on Quickshell and Python.
+
+- [Website](https://www.onelegdave.dev/)
+- [GitHub Profile](https://github.com/onelegdave)
+- [X / Twitter](https://x.com/OneLegDavePDX)
+- [Project Repository](https://github.com/onelegdave/system-quikview)
+
+## Support my work
+
+I build System QuikView as a free, open-source project. If you find it useful, you can [buy me a coffee](https://buymeacoffee.com/onelegdave). Contributions are entirely optional and never required to use any feature.
+
 ## AI assistance
 
-AI tools were used to assist work on this project, including development and documentation. AI assistance is acknowledged here; authorship and maintenance remain with the human project contributors.
+Codex provided AI assistance during the development and documentation of this project. AI assistance is acknowledged here; authorship, ownership, and maintenance remain with the human project maintainer.
 
 ## License
 
