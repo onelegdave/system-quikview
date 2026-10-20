@@ -1,0 +1,20 @@
+Use case: ads-marketing
+Asset type: polished landscape marketplace one-sheet cover for the open-source native Omarchy plugin System QuikView, about 1600 by 1000 pixels.
+Primary request: Make a professional, exceptionally legible product advertisement in the same visual family as the OmaChat cover supplied as Image 1. This is a NEW System QuikView image. Image 1 is STYLE AND COMPOSITION reference only; do not copy chat names, service logos, chat features, or the OmaChat brand. Image 2 is an actual current System QuikView native QML overview using entirely simulated telemetry; use it as the faithful interface insert. Image 3 is the actual fan detail card, also simulated; use it as a distinct readable detail inset.
+Style: premium desktop software marketing, restrained Tokyo Night navy background, subtle blue radial shapes and fine orbit lines, crisp white sans-serif display headings, electric blue accents, thin blue line feature icons, teal and gold accents only inside the real UI. Strong hierarchy, generous spacing and polished typography, aligned with the supplied OmaChat cover.
+Composition: large System QuikView name and small lightning mark at upper left; small spaced 'NATIVE OMARCHY PLUGIN' at upper right. Bold two-line headline at left, supporting copy then six icon-and-label features in a neat two-column grid. A clear large framed native overview at right, preserving its actual rectangular aspect ratio; make the fan detail inset overlap the lower edge tastefully without obscuring the key CPU, memory, GPU readings. Fit all key content with comfortable margins. Native overview may be reduced uniformly, never stretched; make inset text legible. Do not fabricate different controls, graphs, settings or readings. It is okay to simplify tiny nonessential interface text if it becomes illegible, but preserve actual product structure.
+Text (verbatim):
+'System QuikView'
+'NATIVE OMARCHY PLUGIN'
+'Your system,'
+'at a glance.'
+'Live readings. A dashboard you can make your own.'
+'CPU & memory'
+'Integrated & dedicated GPUs'
+'Network & storage'
+'Temperatures & fans'
+'Customizable dashboard'
+'Themes & live graphs'
+'Native Omarchy • Local telemetry • No cloud account'
+'Fan readings depend on available sensors. All readings shown are simulated.'
+Constraints: Accurate spelling is System QuikView, including capital Q and V. No universal hardware compatibility or security guarantees. The pictured integrated GPU has shared memory, not dedicated VRAM. No private account data, hostnames, IP addresses, serials or real telemetry. No version badge or marketplace approval claim. This is promotional artwork based on real demo interface captures, not a claim of a pixel-exact screenshot. No watermarks. Do not include OmaChat, chat messages, service logos, or an invented OS desktop.

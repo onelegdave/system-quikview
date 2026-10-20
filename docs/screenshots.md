@@ -1,5 +1,19 @@
 # System QuikView gallery
 
+## Marketplace cover and native demos — 0.4.7, 19 October 2026
+
+The root `preview.png` is a promotional one-sheet in the same visual family as OmaChat and OmaDroid. OpenAI's built-in image generation produced the composition from native 0.4.7 QML captures with invented readings. It is promotional artwork, not a pixel-exact screenshot or a claim that every sensor is available on every machine. [Generation prompt](artwork/marketplace-cover-prompt.txt).
+
+![System QuikView marketplace cover with simulated readings](../preview.png)
+
+These unedited native captures use an isolated collector stub, synthetic readings and the real current panel. No user telemetry or installed plugin was used or changed. The dark fan card shows simulated kernel RPM, including a true stopped-fan zero; the light card shows a simulated publisher duty estimate, not RPM. The overview intentionally collapses sections; its integrated GPU has shared system memory and no dedicated VRAM. Captured on Omarchy 4.0.5, Quickshell 0.3.2 and Qt 6.12.
+
+<img src="screenshots/demo-overview-v0.4.7-dark.png" width="400" alt="Native dark overview with simulated CPU, memory, integrated GPU, storage and network readings">
+<img src="screenshots/demo-fans-v0.4.7-dark.png" width="560" alt="Native Fans detail with simulated 0 and 2410 RPM tachometers">
+<img src="screenshots/demo-fans-v0.4.7-light.png" width="560" alt="Native light Fans detail showing a simulated 47 percent duty estimate rather than RPM">
+
+## Earlier gallery
+
 Real screenshots from Omarchy Shell, using live readings from an AMD integrated / NVIDIA dedicated laptop. Sections are collapsed and reordered to highlight each view; all of these controls are available in Customize. Longer views scroll.
 
 ## Overview

@@ -8,7 +8,9 @@ A native Omarchy system monitor with a compact bar readout, live graphs, and a d
 
 [Install](#install) · [Screenshots](docs/screenshots.md) · [Customize](#make-it-yours) · [Hardware support](#hardware-support)
 
-<img src="docs/screenshots/overview-onelegdave.png" width="440" alt="System QuikView showing CPU, memory, separate GPU readings, and collapsible sections in the OneLegDave theme">
+<img src="preview.png" width="960" alt="System QuikView promotional cover showing a fictional dashboard, fan readings, and key features">
+
+The cover is promotional artwork with simulated readings. [Native captures and artwork details](docs/screenshots.md) are available separately.
 
 </div>
 
@@ -242,7 +244,7 @@ I build System QuikView as a free, open-source project. If you find it useful, y
 
 ## AI assistance
 
-Codex provided AI assistance during the development and documentation of this project. Claude provided AI assistance with the fan telemetry feature, its security tests and render validation, and documentation. AI assistance is acknowledged here; authorship, ownership, and maintenance remain with the human project maintainer.
+Codex provided AI assistance during the development and documentation of this project, independent review, and preparation of fictional demo captures and promotional artwork. OpenAI's built-in image generation produced the marketplace cover. Claude provided AI assistance with the fan telemetry feature, its security tests and render validation, and documentation. AI assistance is acknowledged here; authorship, ownership, and maintenance remain with the human project maintainer.
 
 ## License
 

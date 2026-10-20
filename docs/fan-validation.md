@@ -52,6 +52,8 @@ Version 0.4.7 adds fan readings (issue #1). Checked on 2026-10-19.
 
 ## Limits
 
+Independent release review on 19 October 2026 reran all 82 Python tests, the Node model tests, QML lint and plugin validation against `8193fe8a78a4ba331c2b001dafb3e12546a18df1`; all passed. Focused native dark/light renders independently checked unknown states with numeric 0 and 40, explicit off with 0, known on duty and kernel RPM. Eight native render/capture scenarios completed without QML errors. Artwork and documentation changes do not change those runtime files; the promotional cover and its source captures use simulated readings.
+
 No HP EliteBook or physical fan-duty publisher was available. The duty path was
 tested with test files and invented snapshots, not that hardware or service.
 QuikView relies on the publisher rewriting the file at least every 10 seconds.
