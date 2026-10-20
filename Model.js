@@ -64,6 +64,31 @@ function temperatureState(sensor) {
     return "";
 }
 
+// Fan readings keep their source unit. A duty percentage is never shown as RPM,
+// and an unknown or missing reading is never shown as zero.
+function fanReading(fan) {
+    if (!fan || typeof fan !== "object") return {value: "—", detail: "Unavailable", percent: null};
+    if (fan.source === "hwmon") {
+        if (!hasValue(fan.rpm) || fan.rpm < 0) return {value: "—", detail: "Unavailable", percent: null};
+        return {value: Math.round(fan.rpm) + " RPM", detail: fan.rpm === 0 ? "Not spinning · kernel tachometer" : "Kernel tachometer", percent: null};
+    }
+    if (fan.source === "bridge") {
+        var percent = hasValue(fan.percent) && fan.percent >= 0 && fan.percent <= 100 ? fan.percent : null;
+        var state = {on: "Running", off: "Off"}[fan.state] || "State unknown";
+        return {value: percent === null ? "—" : Math.round(percent) + "% duty", detail: state + " · publisher duty estimate, not RPM", percent: percent};
+    }
+    return {value: "—", detail: "Unavailable", percent: null};
+}
+function fanSummary(fans) {
+    var list = (fans || []).filter(function(f) { return f && typeof f === "object"; });
+    if (!list.length) return "No fan reading";
+    var tachometers = list.filter(function(f) { return f.source === "hwmon" && hasValue(f.rpm); });
+    var first = tachometers.length
+        ? Math.round(Math.max.apply(null, tachometers.map(function(f) { return f.rpm; }))) + " RPM" + (tachometers.length > 1 ? " max" : "")
+        : fanReading(list[0]).value;
+    return first + (list.length > 1 ? " · " + list.length + " fans" : "");
+}
+
 function parsePalette(raw) {
     var result = {};
     String(raw || "").split("\n").forEach(function(line) {

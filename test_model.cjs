@@ -58,3 +58,36 @@ assert.equal(model.parsePalette('cyan = "#179299"\nblue = "#1e66f5"\nyellow = "#
 assert.equal(model.parsePalette('blue = "#1e66f5"').blue, '#1e66f5');
 assert.equal(model.parsePalette('yellow = "#df8e1d"').yellow, '#df8e1d');
 console.log("Stock named theme palette checked.");
+
+const zero = model.fanReading({source:'hwmon', rpm:0});
+assert.equal(zero.value, '0 RPM');
+assert.match(zero.detail, /Not spinning/);
+assert.equal(model.fanReading({source:'hwmon', rpm:2410}).value, '2410 RPM');
+for (const missing of [null, undefined, {}, {source:'hwmon'}, {source:'hwmon', rpm:null}, {source:'hwmon', rpm:NaN}, {source:'hwmon', rpm:true}, {source:'other', rpm:10}]) {
+    assert.equal(model.fanReading(missing).value, '—');
+}
+const duty = model.fanReading({source:'bridge', percent:46.6, raw:119, state:'on'});
+assert.equal(duty.value, '47% duty');
+assert.equal(duty.percent, 46.6);
+assert.match(duty.detail, /^Running · publisher duty estimate, not RPM$/);
+assert.equal(model.fanReading({source:'bridge', percent:0, raw:0, state:'off'}).value, '0% duty');
+assert.match(model.fanReading({source:'bridge', percent:0, state:'off'}).detail, /^Off/);
+const unknown2 = model.fanReading({source:'bridge', percent:null, raw:null, state:'unknown'});
+assert.equal(unknown2.value, '—');
+assert.match(unknown2.detail, /^State unknown/);
+for (const bad of [true, '50', 150, -1, NaN, Infinity]) {
+    assert.equal(model.fanReading({source:'bridge', percent:bad, state:'on'}).value, '—');
+}
+assert.match(model.fanReading({source:'bridge', percent:20, state:'bogus'}).detail, /^State unknown/);
+for (const fan of [{source:'bridge', percent:80, raw:200, state:'on', rpm:5000}, {source:'bridge', percent:null, state:'unknown'}]) {
+    const reading = model.fanReading(fan);
+    assert.doesNotMatch(reading.value, /RPM/);
+    assert.match(reading.detail, /not RPM/);
+}
+assert.equal(model.fanSummary([]), 'No fan reading');
+assert.equal(model.fanSummary(null), 'No fan reading');
+assert.equal(model.fanSummary([{source:'hwmon', rpm:0}]), '0 RPM');
+assert.equal(model.fanSummary([{source:'hwmon', rpm:1200}, {source:'hwmon', rpm:2400}]), '2400 RPM max · 2 fans');
+assert.equal(model.fanSummary([{source:'bridge', percent:30, state:'on'}]), '30% duty');
+assert.doesNotMatch(model.fanSummary([{source:'bridge', percent:30, state:'on'}]), /RPM/);
+console.log('Fan reading checks passed: real zero RPM, unavailable vs. zero, duty never labeled RPM, invalid bridge values.');

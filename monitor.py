@@ -7,6 +7,7 @@ import fcntl
 from functools import lru_cache
 import shlex
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -31,11 +32,11 @@ class ToolUnavailable(ValueError):
     pass
 
 
-def trusted_node(info, directory=False):
+def trusted_node(info, directory=False, owners=(0,)):
     expected = stat.S_ISDIR if directory else stat.S_ISREG
-    if (not expected(info.st_mode) or info.st_uid != 0
+    if (not expected(info.st_mode) or info.st_uid not in owners
             or info.st_mode & (0o022 | stat.S_ISUID | stat.S_ISGID)):
-        raise ToolUnavailable('Tool path must be root-owned and not writable by other users')
+        raise ToolUnavailable('Path must be root-owned and not writable by other users')
 
 
 @contextmanager
@@ -179,6 +180,134 @@ def temperatures():
                                'maximum': temperature_limit(sensor.with_name(sensor.name.replace('_input', '_max'))),
                                'critical': temperature_limit(sensor.with_name(sensor.name.replace('_input', '_crit')))})
     return result
+
+
+# Optional fallback for laptops whose kernel exposes no fan tachometer (for
+# example HP hp_wmi models). A separate root service may publish
+# {"raw": 0-255, "percent": 0-100, "state": "on"|"off"|"unknown"} here every
+# 3 seconds. QuikView only reads this fixed file: no EC access, no writes.
+# The percentage is the publisher's duty estimate and is never shown as RPM.
+FAN_BRIDGE = '/run/omarchy-fan-speed'
+FAN_BRIDGE_LIMIT = 4096
+# Three missed publisher polls plus slack. JSON has no timestamp, so the
+# inode's modification time is the freshness signal. Clock steps or future
+# times beyond filesystem timestamp slack make the reading unavailable.
+FAN_BRIDGE_MAX_AGE = 10
+FAN_BRIDGE_FUTURE_SLACK = 2
+FAN_RPM_LIMIT = 100000
+
+
+def fans(root=Path('/sys/class/hwmon')):
+    """Kernel hwmon tachometers. 0 RPM is a real reading, not a missing one."""
+    result = []
+    for hw in sorted(root.glob('hwmon*')):
+        name = read(hw / 'name', hw.name)
+        for sensor in sorted(hw.glob('fan*_input')):
+            raw = read(sensor)
+            if (not raw.isascii() or not raw.isdecimal() or int(raw) > FAN_RPM_LIMIT
+                    or read(sensor.with_name(sensor.name.replace('_input', '_fault'))) == '1'):
+                continue
+            number_part = sensor.name[3:-len('_input')]
+            label = read(sensor.with_name('fan' + number_part + '_label'), 'Fan ' + number_part)
+            device_path = (hw / 'device').resolve() if (hw / 'device').exists() else hw.resolve().parent
+            result.append({'id': str(device_path / sensor.name), 'name': name + ' · ' + label,
+                           'label': label, 'chip': name, 'device': device_path.name,
+                           'source': 'hwmon', 'rpm': int(raw)})
+    return result
+
+
+def reject_constant(value):
+    raise ValueError('Non-finite JSON number')
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('Duplicate JSON key')
+        result[key] = value
+    return result
+
+
+def fan_bridge_reading(text):
+    """Validate the publisher schema strictly. bool is not a number."""
+    data = json.loads(text, parse_constant=reject_constant, object_pairs_hook=unique_object)
+    if not isinstance(data, dict) or not {'raw', 'percent', 'state'} <= data.keys():
+        raise ValueError('Unexpected fan bridge schema')
+    raw, percent, state = data['raw'], data['percent'], data['state']
+    if state not in ('on', 'off', 'unknown'):
+        raise ValueError('Unexpected fan state')
+    if raw is not None and (type(raw) is not int or not 0 <= raw <= 255):
+        raise ValueError('Unexpected raw fan value')
+    if percent is not None and (type(percent) not in (int, float) or not 0 <= percent <= 100
+                                or not math.isfinite(percent)):
+        raise ValueError('Unexpected fan percentage')
+    if state == 'off' and percent:
+        raise ValueError('Contradictory fan state')
+    return {'id': 'bridge:' + FAN_BRIDGE, 'name': 'Fan', 'label': 'Fan', 'source': 'bridge',
+            'state': state, 'raw': raw, 'percent': None if percent is None else round(percent, 1)}
+
+
+def fan_bridge(path=FAN_BRIDGE, owners=(0,), now=None):
+    """Read the optional bridge file through one verified, bounded descriptor.
+
+    Every ancestor and the file must be trusted-owner and not group/world
+    writable; symlinks, FIFOs and devices are refused before opening. Atomic
+    replacement is safe because the open descriptor keeps one inode. A file
+    rewritten or growing during the read is refused rather than parsed.
+    """
+    parts = Path(path).parts
+    parent = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    fd = None
+    try:
+        trusted_node(os.fstat(parent), directory=True, owners=owners)
+        for part in parts[1:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                            dir_fd=parent)
+            os.close(parent)
+            parent = child
+            trusted_node(os.fstat(parent), directory=True, owners=owners)
+        # Never open a device or FIFO; the descriptor is checked again below.
+        trusted_node(os.stat(parts[-1], dir_fd=parent, follow_symlinks=False), owners=owners)
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_NOCTTY | os.O_CLOEXEC,
+                     dir_fd=parent)
+        before = os.fstat(fd)
+        trusted_node(before, owners=owners)
+        if before.st_size > FAN_BRIDGE_LIMIT:
+            raise ValueError('Fan bridge file is too large')
+        data = bytearray()
+        while len(data) <= FAN_BRIDGE_LIMIT:
+            chunk = os.read(fd, FAN_BRIDGE_LIMIT + 1 - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+        after = os.fstat(fd)
+        # Not ctime: an atomic rename over this inode changes only its ctime.
+        identity = lambda info: (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+        if len(data) > FAN_BRIDGE_LIMIT or len(data) != after.st_size or identity(before) != identity(after):
+            raise ValueError('Fan bridge file changed while reading')
+        age = (time.time() if now is None else now) - after.st_mtime_ns / 1e9
+        if not -FAN_BRIDGE_FUTURE_SLACK <= age <= FAN_BRIDGE_MAX_AGE:
+            raise ValueError('Fan bridge reading is stale or from the future')
+        return fan_bridge_reading(bytes(data).decode('utf-8'))
+    finally:
+        if fd is not None:
+            os.close(fd)
+        os.close(parent)
+
+
+def fan_readings():
+    """Prefer kernel RPM. Consult the bridge only when no RPM reading exists."""
+    try:
+        result = fans()
+    except OSError:
+        result = []
+    if result:
+        return result
+    try:
+        return [fan_bridge()]
+    except (OSError, ValueError, RecursionError):
+        return []
 
 
 class AmdDevicePrefix(ctypes.Structure):
@@ -535,6 +664,7 @@ class Sampler:
                 'memory': {'used': used, 'total': total, 'percent': round(100 * used / total, 1) if total else None,
                            'swapUsed': mem.get('SwapTotal', 0) - mem.get('SwapFree', 0), 'swapTotal': mem.get('SwapTotal', 0)},
                 'gpus': gpus(self.drm_usage), 'temperatures': temps, 'cpuTemp': max(cpu_temps) if cpu_temps else None,
+                'fans': fan_readings(),
                 'networks': networks, 'disks': disks, 'processes': processes[:8]}
 
 

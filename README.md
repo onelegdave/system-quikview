@@ -22,13 +22,14 @@ QuikView puts the essentials in your bar and the details one click away. See wha
 - **Follow your theme.** Text, highlights, graphs, and warning colors come from the active Omarchy theme, with live palette updates.
 - **See both sides of the network.** Separate download/upload graphs, per-interface rates, and transfer counters. Inactive interfaces are tucked behind a toggle.
 - **Read temperatures by device.** CPU, graphics, storage, and other sensors have grouped cards, gauges, and hardware-reported warning limits.
+- **See fan readings honestly.** Kernel fan tachometers appear in RPM inside Temperatures. A stopped fan reads 0 RPM; a missing reading stays unavailable.
 - **Find busy processes.** Ranked cards show process names, PIDs, CPU usage, memory, and comparison bars.
 
 QuikView reads Linux telemetry directly. **It does not require btop, a cloud account, a root service, or Python packages from pip.**
 
 ## Install
 
-Requires **Omarchy Shell/Quickshell**, its native plugin API, and **Python 3**. This is an Omarchy Shell plugin, not a Waybar module. Tested on Omarchy **4.0.3-1** with Quickshell **0.3.1**; older shells may not provide the required APIs.
+Requires **Omarchy Shell/Quickshell**, its native plugin API, and **Python 3**. This is an Omarchy Shell plugin, not a Waybar module. Tested on Omarchy **4.0.3-1** with Quickshell **0.3.1**. The 0.4.7 popup was also rendered on Omarchy **4.0.5-1** with Quickshell **0.3.2** and Qt **6.12.0**. Older shells may not provide the required APIs.
 
 ```sh
 omarchy plugin add https://github.com/onelegdave/system-quikview.git --enable
@@ -138,6 +139,7 @@ QuikView reports what the running Linux kernel and drivers make available. A mis
 | Network | `/proc/net/dev` and interface information in sysfs |
 | Storage | Mounted local block filesystems |
 | Temperature sensors | Linux hwmon, plus GPU temperature when supplied by the GPU collector |
+| Fans | Linux hwmon `fanN_input` tachometers in RPM; optional read-only fan-duty file when no RPM reading exists (see below) |
 | AMD GPU | sysfs readings; optional `libdrm_amdgpu` identifies integrated vs. dedicated |
 | NVIDIA GPU | `nvidia-smi`, when installed and working |
 | Intel Xe (`xe` driver) | Per-user utilization estimate from DRM activity counters; integrated/dedicated role from the driver configuration |
@@ -150,6 +152,20 @@ The DRM utilization fallback is a **session estimate**: QuikView sums readable c
 
 An integrated Xe GPU shares system RAM, so its card says **Shared system memory · no dedicated VRAM**. QuikView does not substitute total system RAM for VRAM or CPU temperature for GPU temperature. If the driver exposes no GPU temperature sensor, that reading remains unavailable. GPU identification cache entries expire within 30 seconds, allowing a temporary failed query to retry on a following sample; changing the driver or PCI device ID also triggers a new query. The collector follows the kernel's [DRM client statistics interface](https://www.kernel.org/doc/html/latest/gpu/drm-usage-stats.html) and [Xe counter format](https://www.kernel.org/doc/html/latest/gpu/xe/xe-drm-usage-stats.html).
 
+### Fans
+
+QuikView reads fan speed from the kernel's hwmon `fanN_input` files, in RPM. A reading of **0 RPM** is shown as a real zero (not spinning); a fan reporting a fault, or an unreadable value, is left out rather than shown as zero. QuikView never controls fans.
+
+Some laptops expose fan control but no tachometer, so the kernel has no RPM to read (for example HP EliteBooks using `hp_wmi`). Only when no hwmon RPM reading exists, QuikView looks for an optional file at the fixed path `/run/omarchy-fan-speed`, written by a separate root service you already run:
+
+```json
+{"raw": 119, "percent": 47, "state": "on"}
+```
+
+`raw` is an integer 0–255 or `null`, `percent` a number 0–100 or `null`, and `state` one of `on`, `off`, or `unknown`. QuikView shows `percent` as **duty**, the publisher's own estimate, never as RPM, and it does not convert `raw` values, whose meaning varies by model. An unknown state or missing percentage shows **—**, not 0. QuikView does not access the embedded controller, load modules, run a service, or write to this file.
+
+The file is untrusted input. QuikView reads it through one descriptor without following symlinks. It refuses FIFOs, devices, files over **4 KiB**, files changed during the read, and files or parent directories that are not owned by root or are writable by group or other users. It also refuses malformed JSON, duplicate keys, non-finite numbers, booleans used as numbers, out-of-range values, and `off` with a nonzero percentage. The file must have been modified within the last **10 seconds** (the publisher updates every 3 seconds), and a modification time more than 2 seconds in the future is refused. Atomic replacement is supported. Any refusal leaves the fan reading unavailable, and other readings continue.
+
 Optional `lspci` improves device names. The collector only accepts `/usr/bin/lspci` and `/usr/bin/nvidia-smi`: root-owned, non-symlink ELF executables under root-owned directories that other users cannot write. Missing or rejected tools leave the corresponding optional readings unavailable.
 
 Each invocation runs the verified executable file descriptor, with a fixed environment (`PATH=/usr/bin`, `LANG=C`, `LC_ALL=C`) and working directory `/`. Output is limited to **64 KiB stdout** and **16 KiB stderr**. Deadlines are **1 second** for lspci and **1.5 seconds** for nvidia-smi, followed by at most **0.5 seconds** of waiting for process cleanup. The process group is killed on completion, timeout, or overflow, including descendants left behind by the tool. This is resource limiting, not a sandbox.
@@ -161,6 +177,7 @@ Nothing is installed automatically by the collector. The local installer launche
 - **CPU:** overall utilization across threads. Process CPU uses **100% per fully occupied thread** and may exceed 100%.
 - **Memory:** total RAM minus available RAM; reclaimable cache is excluded. Swap is separate.
 - **History:** the latest 60 samples, kept in memory. CPU/GPU/RAM graphs use a 0–100% scale. Network graphs scale independently to their recent peaks.
+- **Fans:** RPM comes from the kernel tachometer. Duty percentages from the optional fan file are labeled as duty, not RPM.
 - **Temperatures:** high/critical labels use valid limits reported by the hardware. Without a limit, a gauge uses a labeled 0–100°C visual scale. CPU temperature is the highest supported CPU sensor reading.
 - **Network:** bar and overview rates aggregate non-loopback interfaces. Virtual interfaces can double-count traffic. Received/sent totals are interface counters, not totals since opening QuikView.
 - **Disks:** one mount per local block device. The bar uses the first mount, normally `/`.
@@ -225,7 +242,7 @@ I build System QuikView as a free, open-source project. If you find it useful, y
 
 ## AI assistance
 
-Codex provided AI assistance during the development and documentation of this project. AI assistance is acknowledged here; authorship, ownership, and maintenance remain with the human project maintainer.
+Codex provided AI assistance during the development and documentation of this project. Claude provided AI assistance with the fan telemetry feature, its security tests and render validation, and documentation. AI assistance is acknowledged here; authorship, ownership, and maintenance remain with the human project maintainer.
 
 ## License
 

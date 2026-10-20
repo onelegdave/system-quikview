@@ -6,6 +6,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
+import qs.Commons as Commons
 import "Model.js" as Model
 
 Panel {
@@ -33,7 +34,7 @@ Panel {
         function customize(): void { root.customizing = true; root.open() }
         function move(key: string, direction: string): void { root.moveSection(key, Number(direction)) }
         function status(): string {
-            return JSON.stringify({customizing: root.customizing, order: root.sectionLayout.map(e => e.key), renderedOrder: dashboard.children.filter(item => "entry" in item).sort((a, b) => a.y - b.y).map(item => item.entry.key), colors: {cpu: root.cpuColor.toString(), memory: root.memoryColor.toString(), gpu: root.gpuColor.toString(), temperature: root.temperatureColor.toString()}, metric: root.metric, collapsed: root.collapsed, stale: root.stale, cpu: root.snapshot.cpu, gpus: root.gpuList, gpuSource: root.gpuSource, temperatureGpu: root.temperatureGpu, barText: root.barValue(), geometry: {barWidth: button.width, popupX: panel.cardOrigin.x, popupY: panel.cardOrigin.y, popupWidth: panel.contentWidth, popupHeight: panel.contentHeight}, viewport: {height: scroll.height, contentHeight: body.implicitHeight, y: root.flickable ? root.flickable.contentY : 0}})
+            return JSON.stringify({customizing: root.customizing, order: root.sectionLayout.map(e => e.key), renderedOrder: dashboard.children.filter(item => "entry" in item).sort((a, b) => a.y - b.y).map(item => item.entry.key), colors: {cpu: root.cpuColor.toString(), memory: root.memoryColor.toString(), gpu: root.gpuColor.toString(), temperature: root.temperatureColor.toString()}, metric: root.metric, collapsed: root.collapsed, stale: root.stale, cpu: root.snapshot.cpu, gpus: root.gpuList, gpuSource: root.gpuSource, temperatureGpu: root.temperatureGpu, fans: root.fans, barText: root.barValue(), geometry: {barWidth: button.width, popupX: panel.cardOrigin.x, popupY: panel.cardOrigin.y, popupWidth: panel.contentWidth, popupHeight: panel.contentHeight}, viewport: {height: scroll.height, contentHeight: body.implicitHeight, y: root.flickable ? root.flickable.contentY : 0}})
         }
     }
     property var snapshot: ({})
@@ -41,12 +42,12 @@ Panel {
     property bool stale: true
     // Omarchy exposes these runtime objects as generic QtObject properties.
     readonly property var themeFont: Style.font
-    readonly property var popupColors: Color.popups
+    readonly property var popupColors: Commons.Color.popups
     readonly property var shellHost: bar
     readonly property var barWindow: button.QsWindow.window
     readonly property Flickable flickable: scroll.contentItem as Flickable
     readonly property color ink: popupColors.text
-    readonly property color cpuColor: Color.accent
+    readonly property color cpuColor: Commons.Color.accent
     ThemePalette { id: themePalette }
     readonly property color memoryColor: themePalette.memory
     readonly property color gpuColor: themePalette.gpu
@@ -75,6 +76,7 @@ Panel {
     readonly property var visibleNetworks: setting("showInactiveNetworks", false) ? networks : networks.filter(n => n.state !== "down")
     readonly property var thermalGroups: Model.temperatureGroups(snapshot.temperatures, gpuList)
     readonly property var thermalSensors: thermalGroups.reduce((items, group) => items.concat(group.sensors), [])
+    readonly property var fans: snapshot.fans || []
     readonly property real downloadRate: networks.reduce((total, n) => total + (n.down || 0), 0)
     readonly property real uploadRate: networks.reduce((total, n) => total + (n.up || 0), 0)
     readonly property var hottestSensor: thermalSensors.slice().sort((a, b) => b.value - a.value)[0] || ({})
@@ -281,7 +283,7 @@ Panel {
                     }
                     RowLayout {
                         width: parent.width; spacing: Style.space(6)
-                        Rectangle { implicitWidth: Style.space(6); implicitHeight: implicitWidth; radius: width/2; color: root.stale ? Color.urgent : root.memoryColor }
+                        Rectangle { implicitWidth: Style.space(6); implicitHeight: implicitWidth; radius: width/2; color: root.stale ? Commons.Color.urgent : root.memoryColor }
                         Label { Layout.fillWidth: true; text: root.stale ? "Readings unavailable · retrying" : "Live  ·  every " + root.setting("interval", 2) + "s"; font.pixelSize: Style.space(12); opacity: 0.7 }
                         Text { text: Math.floor((root.snapshot.uptime || 0) / 3600) + "h uptime"; color: root.ink; opacity: 0.5; font.family: root.themeFont.family; font.pixelSize: Style.space(12) }
                     }
@@ -496,6 +498,43 @@ Panel {
                             ThermalHero { width: (parent.width - parent.spacing) / 2; heading: "PROCESSOR"; value: root.snapshot.cpuTemp; note: "CPU sensor maximum" }
                             ThermalHero { width: (parent.width - parent.spacing) / 2; heading: "HOTTEST SENSOR"; value: root.hottestSensor.value; note: root.hottestSensor.name || "No sensors detected" }
                         }
+                        Rectangle {
+                            id: fanCard
+                            width: parent.width; implicitHeight: fanBody.implicitHeight + Style.space(24)
+                            radius: Style.space(7); color: root.fade(root.temperatureColor, 0.035)
+                            border.width: 1; border.color: root.fade(root.temperatureColor, 0.13)
+                            Column {
+                                id: fanBody
+                                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                                anchors.margins: Style.space(12); spacing: Style.space(10)
+                                Column {
+                                    width: parent.width; spacing: Style.space(3)
+                                    Label { text: "Fans"; font.bold: true; font.pixelSize: Style.space(13) }
+                                    Label { text: root.fans.length ? Model.fanSummary(root.fans) : "No fan speed reading available"; opacity: 0.45; font.pixelSize: Style.space(10) }
+                                }
+                                Repeater {
+                                    model: root.fans.length
+                                    Column {
+                                        id: fanRow
+                                        required property int index
+                                        readonly property var fan: root.fans[index] || ({})
+                                        readonly property var reading: Model.fanReading(fan)
+                                        width: fanBody.width; spacing: Style.space(4)
+                                        RowLayout {
+                                            width: parent.width
+                                            Text { Layout.fillWidth: true; text: fanRow.fan.label || fanRow.fan.name || "Fan"; textFormat: Text.PlainText; elide: Text.ElideRight; color: root.ink; opacity: 0.75; font.family: root.themeFont.family; font.pixelSize: Style.space(12) }
+                                            Text { text: root.stale ? "—" : fanRow.reading.value; textFormat: Text.PlainText; color: root.temperatureColor; font.family: root.themeFont.family; font.pixelSize: Style.space(18); font.bold: true }
+                                        }
+                                        Rectangle {
+                                            visible: fanRow.reading.percent !== null
+                                            width: parent.width; height: Style.space(4); radius: height/2; color: root.fade(root.temperatureColor, 0.12)
+                                            Rectangle { width: parent.width * (fanRow.reading.percent || 0) / 100; height: parent.height; radius: height/2; color: root.temperatureColor; Behavior on width { NumberAnimation { duration: 250 } } }
+                                        }
+                                        Label { text: fanRow.reading.detail; opacity: 0.4; font.pixelSize: Style.space(10) }
+                                    }
+                                }
+                            }
+                        }
                         Label { visible: !root.thermalGroups.length; text: "No temperature sensors available"; opacity: 0.65 }
                         Repeater {
                             model: root.thermalGroups.length
@@ -527,12 +566,12 @@ Panel {
                                             RowLayout {
                                                 width: parent.width
                                                 Text { Layout.fillWidth: true; text: (sensorRow.sensor.label || sensorRow.sensor.name || "").replace(/^temp([0-9]+)$/, "Sensor $1"); elide: Text.ElideRight; color: root.ink; opacity: 0.75; font.family: root.themeFont.family; font.pixelSize: Style.space(12) }
-                                                Text { text: sensorRow.condition; visible: text !== ""; color: Color.urgent; font.family: root.themeFont.family; font.pixelSize: Style.space(10) }
-                                                Text { text: root.temp(sensorRow.sensor.value); color: sensorRow.condition ? Color.urgent : root.temperatureColor; font.family: root.themeFont.family; font.pixelSize: Style.space(18); font.bold: true }
+                                                Text { text: sensorRow.condition; visible: text !== ""; color: Commons.Color.urgent; font.family: root.themeFont.family; font.pixelSize: Style.space(10) }
+                                                Text { text: root.temp(sensorRow.sensor.value); color: sensorRow.condition ? Commons.Color.urgent : root.temperatureColor; font.family: root.themeFont.family; font.pixelSize: Style.space(18); font.bold: true }
                                             }
                                             Rectangle {
                                                 width: parent.width; height: Style.space(4); radius: height/2; color: root.fade(root.temperatureColor, 0.12)
-                                                Rectangle { width: parent.width * Math.max(0, Math.min(1, (sensorRow.sensor.value || 0) / sensorRow.limit)); height: parent.height; radius: height/2; color: sensorRow.condition ? Color.urgent : root.temperatureColor; Behavior on width { NumberAnimation { duration: 250 } } }
+                                                Rectangle { width: parent.width * Math.max(0, Math.min(1, (sensorRow.sensor.value || 0) / sensorRow.limit)); height: parent.height; radius: height/2; color: sensorRow.condition ? Commons.Color.urgent : root.temperatureColor; Behavior on width { NumberAnimation { duration: 250 } } }
                                             }
                                             Label { text: sensorRow.sensor.critical > 0 ? "Critical limit " + root.temp(sensorRow.sensor.critical) : sensorRow.sensor.maximum > 0 ? "High limit " + root.temp(sensorRow.sensor.maximum) : "Scale 0–100°C · no hardware limit reported"; opacity: 0.4; font.pixelSize: Style.space(10) }
                                         }
@@ -643,7 +682,7 @@ Panel {
             Column {
                 width: parent.width; spacing: Style.space(12)
                 Label {
-                    text: "System QuikView is a native Omarchy monitor by OneLegDave. Built on Quickshell and Python. Codex provided AI assistance during development.\nDistributed under the MIT License."
+                    text: "System QuikView is a native Omarchy monitor by OneLegDave. Built on Quickshell and Python. Codex and Claude provided AI assistance during development.\nDistributed under the MIT License."
                     opacity: 0.8
                     wrapMode: Text.WordWrap
                     width: parent.width
@@ -683,7 +722,7 @@ Panel {
         Rectangle {
             width: parent.width * Math.max(0, Math.min(100, parent.value || 0)) / 100
             height: parent.height; radius: height / 2
-            color: parent.value >= 90 ? Color.urgent : parent.tint
+            color: parent.value >= 90 ? Commons.Color.urgent : parent.tint
             Behavior on width { NumberAnimation { duration: 250 } }
         }
     }
