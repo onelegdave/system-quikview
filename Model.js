@@ -73,8 +73,12 @@ function fanReading(fan) {
         return {value: Math.round(fan.rpm) + " RPM", detail: fan.rpm === 0 ? "Not spinning · kernel tachometer" : "Kernel tachometer", percent: null};
     }
     if (fan.source === "bridge") {
+        // Only an explicit on/off state makes the publisher's percentage a reading.
+        // Unknown, unexpected or contradictory states stay unavailable, whatever percent holds.
+        var state = fan.state === "on" ? "Running" : fan.state === "off" ? "Off" : "";
         var percent = hasValue(fan.percent) && fan.percent >= 0 && fan.percent <= 100 ? fan.percent : null;
-        var state = {on: "Running", off: "Off"}[fan.state] || "State unknown";
+        if (!state) return {value: "—", detail: "Unavailable · fan state unknown", percent: null};
+        if (fan.state === "off" && percent !== null && percent !== 0) return {value: "—", detail: "Unavailable · inconsistent fan state", percent: null};
         return {value: percent === null ? "—" : Math.round(percent) + "% duty", detail: state + " · publisher duty estimate, not RPM", percent: percent};
     }
     return {value: "—", detail: "Unavailable", percent: null};
@@ -85,7 +89,7 @@ function fanSummary(fans) {
     var tachometers = list.filter(function(f) { return f.source === "hwmon" && hasValue(f.rpm); });
     var first = tachometers.length
         ? Math.round(Math.max.apply(null, tachometers.map(function(f) { return f.rpm; }))) + " RPM" + (tachometers.length > 1 ? " max" : "")
-        : fanReading(list[0]).value;
+        : fanReading(list[0]).value.replace(/^—$/, "Unavailable");
     return first + (list.length > 1 ? " · " + list.length + " fans" : "");
 }
 

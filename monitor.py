@@ -244,6 +244,10 @@ def fan_bridge_reading(text):
         raise ValueError('Unexpected fan percentage')
     if state == 'off' and percent:
         raise ValueError('Contradictory fan state')
+    # An unknown state is unavailable even if the publisher left a number in
+    # percent, so that number is never passed on as a duty reading.
+    if state == 'unknown':
+        percent = None
     return {'id': 'bridge:' + FAN_BRIDGE, 'name': 'Fan', 'label': 'Fan', 'source': 'bridge',
             'state': state, 'raw': raw, 'percent': None if percent is None else round(percent, 1)}
 

@@ -510,7 +510,7 @@ Panel {
                                 Column {
                                     width: parent.width; spacing: Style.space(3)
                                     Label { text: "Fans"; font.bold: true; font.pixelSize: Style.space(13) }
-                                    Label { text: root.fans.length ? Model.fanSummary(root.fans) : "No fan speed reading available"; opacity: 0.45; font.pixelSize: Style.space(10) }
+                                    Label { text: root.stale ? "Unavailable" : root.fans.length ? Model.fanSummary(root.fans) : "No fan speed reading available"; textFormat: Text.PlainText; opacity: 0.45; font.pixelSize: Style.space(10) }
                                 }
                                 Repeater {
                                     model: root.fans.length
@@ -526,7 +526,7 @@ Panel {
                                             Text { text: root.stale ? "—" : fanRow.reading.value; textFormat: Text.PlainText; color: root.temperatureColor; font.family: root.themeFont.family; font.pixelSize: Style.space(18); font.bold: true }
                                         }
                                         Rectangle {
-                                            visible: fanRow.reading.percent !== null
+                                            visible: !root.stale && fanRow.reading.percent !== null
                                             width: parent.width; height: Style.space(4); radius: height/2; color: root.fade(root.temperatureColor, 0.12)
                                             Rectangle { width: parent.width * (fanRow.reading.percent || 0) / 100; height: parent.height; radius: height/2; color: root.temperatureColor; Behavior on width { NumberAnimation { duration: 250 } } }
                                         }

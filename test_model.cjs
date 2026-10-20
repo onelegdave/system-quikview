@@ -74,15 +74,32 @@ assert.equal(model.fanReading({source:'bridge', percent:0, raw:0, state:'off'}).
 assert.match(model.fanReading({source:'bridge', percent:0, state:'off'}).detail, /^Off/);
 const unknown2 = model.fanReading({source:'bridge', percent:null, raw:null, state:'unknown'});
 assert.equal(unknown2.value, '—');
-assert.match(unknown2.detail, /^State unknown/);
+assert.equal(unknown2.detail, 'Unavailable · fan state unknown');
 for (const bad of [true, '50', 150, -1, NaN, Infinity]) {
     assert.equal(model.fanReading({source:'bridge', percent:bad, state:'on'}).value, '—');
 }
-assert.match(model.fanReading({source:'bridge', percent:20, state:'bogus'}).detail, /^State unknown/);
-for (const fan of [{source:'bridge', percent:80, raw:200, state:'on', rpm:5000}, {source:'bridge', percent:null, state:'unknown'}]) {
+// Unknown, unexpected or contradictory states never yield a credible percentage or gauge,
+// even when a stale or inconsistent snapshot still carries a number in percent.
+for (const fan of [{source:'bridge', percent:0, raw:0, state:'unknown'}, {source:'bridge', percent:40, raw:100, state:'unknown'},
+                   {source:'bridge', percent:null, raw:null, state:'unknown'}, {source:'bridge', percent:20, state:'bogus'},
+                   {source:'bridge', percent:20}, {source:'bridge', percent:20, state:null}, {source:'bridge', percent:20, state:'constructor'},
+                   {source:'bridge', percent:20, state:'toString'}, {source:'bridge', percent:20, state:'ON'}, {source:'bridge', percent:30, state:'off'}]) {
     const reading = model.fanReading(fan);
-    assert.doesNotMatch(reading.value, /RPM/);
-    assert.match(reading.detail, /not RPM/);
+    assert.equal(reading.value, '—', JSON.stringify(fan));
+    assert.equal(reading.percent, null, JSON.stringify(fan));
+    assert.match(reading.detail, /^Unavailable · /, JSON.stringify(fan));
+    assert.equal(model.fanSummary([fan]), 'Unavailable');
+}
+const offZero = model.fanReading({source:'bridge', percent:0, raw:0, state:'off'});
+assert.deepEqual([offZero.value, offZero.percent], ['0% duty', 0]);
+assert.equal(model.fanSummary([{source:'bridge', percent:0, raw:0, state:'off'}]), '0% duty');
+const onForty = model.fanReading({source:'bridge', percent:40, raw:100, state:'on'});
+assert.deepEqual([onForty.value, onForty.percent], ['40% duty', 40]);
+for (const fan of [{source:'bridge', percent:80, raw:200, state:'on', rpm:5000}, {source:'bridge', percent:0, state:'off', rpm:5000},
+                   {source:'bridge', percent:0, raw:0, state:'unknown', rpm:5000}, {source:'bridge', percent:null, state:'unknown'}]) {
+    const reading = model.fanReading(fan);
+    assert.doesNotMatch(reading.value + ' ' + reading.detail, /\d\s*RPM/);
+    assert.doesNotMatch(model.fanSummary([fan]), /RPM/);
 }
 assert.equal(model.fanSummary([]), 'No fan reading');
 assert.equal(model.fanSummary(null), 'No fan reading');
@@ -90,4 +107,4 @@ assert.equal(model.fanSummary([{source:'hwmon', rpm:0}]), '0 RPM');
 assert.equal(model.fanSummary([{source:'hwmon', rpm:1200}, {source:'hwmon', rpm:2400}]), '2400 RPM max · 2 fans');
 assert.equal(model.fanSummary([{source:'bridge', percent:30, state:'on'}]), '30% duty');
 assert.doesNotMatch(model.fanSummary([{source:'bridge', percent:30, state:'on'}]), /RPM/);
-console.log('Fan reading checks passed: real zero RPM, unavailable vs. zero, duty never labeled RPM, invalid bridge values.');
+console.log('Fan reading checks passed: real zero RPM, unavailable vs. zero, duty never labeled RPM, invalid bridge values, unknown state never a percentage.');

@@ -69,13 +69,28 @@ class BridgeSchemaTests(unittest.TestCase):
         cases = [({'raw': 120, 'percent': 47, 'state': 'on'}, 47),
                  ({'raw': 0, 'percent': 0, 'state': 'off'}, 0),
                  ({'raw': 255, 'percent': 99.96, 'state': 'on'}, 100.0),
-                 ({'raw': None, 'percent': None, 'state': 'unknown'}, None),
-                 ({'raw': 30, 'percent': 12.5, 'state': 'unknown', 'extra': 'ignored'}, 12.5)]
+                 ({'raw': None, 'percent': None, 'state': 'off'}, None),
+                 ({'raw': None, 'percent': None, 'state': 'unknown'}, None)]
         for data, percent in cases:
             with self.subTest(data=data):
                 reading = monitor.fan_bridge_reading(json.dumps(data))
                 self.assertEqual((reading['source'], reading['state'], reading['percent']), ('bridge', data['state'], percent))
                 self.assertNotIn('rpm', reading)
+
+    def test_unknown_state_never_passes_on_a_percentage(self):
+        # A publisher may leave 0 or an old duty in percent while the state is
+        # unknown; that number must not become a reading (unknown is not zero).
+        for raw, percent in ((0, 0), (100, 40), (30, 12.5), (255, 100), (None, 0), (7, None)):
+            data = {'raw': raw, 'percent': percent, 'state': 'unknown', 'extra': 'ignored'}
+            with self.subTest(data=data):
+                reading = monitor.fan_bridge_reading(json.dumps(data))
+                self.assertEqual((reading['state'], reading['percent'], reading['raw']), ('unknown', None, raw))
+                self.assertNotIn('rpm', reading)
+        # Malformed values are still refused rather than discarded.
+        for text in ('{"raw": 1, "percent": true, "state": "unknown"}', '{"raw": 1, "percent": 150, "state": "unknown"}',
+                     '{"raw": 1, "percent": NaN, "state": "unknown"}', '{"raw": true, "percent": 0, "state": "unknown"}'):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                monitor.fan_bridge_reading(text)
 
     def test_invalid_types_ranges_and_documents(self):
         bad = ['{"raw": true, "percent": 10, "state": "on"}', '{"raw": 10, "percent": false, "state": "on"}',
@@ -145,6 +160,16 @@ class BridgeFileTests(unittest.TestCase):
         self.write('{"raw": 87, "percent": 34, "state": "on"}\n')
         reading = self.read()
         self.assertEqual((reading['percent'], reading['raw'], reading['state']), (34, 87, 'on'))
+
+    def test_unknown_state_file_is_unavailable_and_off_zero_is_real(self):
+        self.write('{"raw": 0, "percent": 0, "state": "unknown"}\n')
+        reading = self.read()
+        self.assertEqual((reading['state'], reading['percent'], reading['raw']), ('unknown', None, 0))
+        self.write('{"raw": 100, "percent": 40, "state": "unknown"}\n')
+        self.assertIsNone(self.read()['percent'])
+        self.write('{"raw": 0, "percent": 0, "state": "off"}\n')
+        reading = self.read()
+        self.assertEqual((reading['state'], reading['percent']), ('off', 0))
 
     def test_missing_file(self):
         with self.assertRaises(FileNotFoundError):
